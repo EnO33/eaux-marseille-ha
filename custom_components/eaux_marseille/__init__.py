@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 from .api import EauxDeMarseilleClient
 from .const import CONF_CONTRACT_ID, DOMAIN, ENTRY_CLIENT, ENTRY_COORDINATOR
 from .coordinator import EauxDeMarseilleCoordinator
+from .statistics import async_import_historical_statistics
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,6 +35,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    hass.async_create_task(
+        async_import_historical_statistics(
+            hass, client, entry.data[CONF_CONTRACT_ID]
+        )
+    )
     return True
 
 
