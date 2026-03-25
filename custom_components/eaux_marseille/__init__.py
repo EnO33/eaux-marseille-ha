@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, EVENT_HOMEASSISTANT_STARTED, Platform
+from homeassistant.core import Event, HomeAssistant
 
 from .api import EauxDeMarseilleClient
 from .const import CONF_CONTRACT_ID, DOMAIN, ENTRY_CLIENT, ENTRY_COORDINATOR
@@ -36,7 +36,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    async def _run_import() -> None:
+    async def _run_import(_event: Event | None = None) -> None:
         try:
             await async_import_historical_statistics(
                 hass, client, entry.data[CONF_CONTRACT_ID]
@@ -44,7 +44,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception as err:  # noqa: BLE001
             _LOGGER.exception("Failed to import historical statistics: %s", err)
 
-    hass.async_create_task(_run_import())
+    if hass.is_running:
+        hass.async_create_task(_run_import())
+    else:
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _run_import)
 
     return True
 

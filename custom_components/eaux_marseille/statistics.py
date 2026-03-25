@@ -38,18 +38,30 @@ async def async_import_historical_statistics(
     Safe to call multiple times.
     """
     try:
+        # Wait for the recorder to be fully ready before accessing statistics.
+        # Without this, the import can fail when the integration loads early
+        # during HA startup (typical with HACS integrations).
+        instance = get_instance(hass)
+        await instance.async_db_ready
+
         _LOGGER.debug("Starting historical statistics import for contract %s", contract_id)
 
         statistic_id = f"{DOMAIN}:{contract_id}_monthly_consumption"
 
-        existing = await get_instance(hass).async_add_executor_job(
-            lambda: get_last_statistics(hass, 1, statistic_id, True, {"mean"})
+        existing = await instance.async_add_executor_job(
+            get_last_statistics, hass, 1, statistic_id, True, {"sum"}
         )
         last_ts: float = existing[statistic_id][0]["start"] if existing.get(statistic_id) else 0.0
         _LOGGER.debug("Last imported timestamp: %s", last_ts)
 
         current_year = datetime.now(timezone.utc).year
         stats: list[StatisticData] = []
+        running_sum = 0.0
+
+        # If we already have data, retrieve the last sum to continue from there.
+        if last_ts > 0 and existing.get(statistic_id):
+            last_entry = existing[statistic_id][0]
+            running_sum = last_entry.get("sum") or 0.0
 
         for year in range(_START_YEAR, current_year + 1):
             try:
@@ -68,15 +80,20 @@ async def async_import_historical_statistics(
                     continue
 
                 dt = datetime.fromisoformat(date_str).astimezone(timezone.utc)
+                # Align to the start of the hour (required by HA recorder).
+                dt = dt.replace(minute=0, second=0, microsecond=0)
+
                 if dt.timestamp() <= last_ts:
                     continue
+
+                consumption = round(float(value), 3)
+                running_sum = round(running_sum + consumption, 3)
 
                 stats.append(
                     StatisticData(
                         start=dt,
-                        mean=round(float(value), 3),
-                        min=round(float(value), 3),
-                        max=round(float(value), 3),
+                        state=consumption,
+                        sum=running_sum,
                     )
                 )
 
@@ -84,27 +101,20 @@ async def async_import_historical_statistics(
             _LOGGER.debug("No new historical statistics to import for contract %s", contract_id)
             return
 
-        metadata_kwargs: dict = {
-            "has_mean": True,
-            "has_sum": False,
-            "name": f"Eaux de Marseille {contract_id} — Monthly consumption",
-            "source": DOMAIN,
-            "statistic_id": statistic_id,
-            "unit_of_measurement": UnitOfVolume.CUBIC_METERS,
-        }
+        metadata = StatisticMetaData(
+            has_mean=False,
+            has_sum=True,
+            name=f"Eaux de Marseille {contract_id} — Monthly consumption",
+            source=DOMAIN,
+            statistic_id=statistic_id,
+            unit_of_measurement=UnitOfVolume.CUBIC_METERS,
+        )
 
-        try:
-            from homeassistant.components.recorder.models import MeanType  # noqa: PLC0415
-            metadata_kwargs["mean_type"] = MeanType.ARITHMETIC
-            _LOGGER.debug("MeanType.ARITHMETIC applied")
-        except ImportError:
-            _LOGGER.debug("MeanType not available in this HA version")
-
-        metadata = StatisticMetaData(**metadata_kwargs)
         async_import_statistics(hass, metadata, stats)
 
         _LOGGER.info(
-            "Imported %d monthly statistics for contract %s", len(stats), contract_id
+            "Imported %d monthly statistics for contract %s (total sum: %s m³)",
+            len(stats), contract_id, running_sum,
         )
 
     except Exception as err:
