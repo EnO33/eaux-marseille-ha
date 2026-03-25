@@ -1,0 +1,38 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Eaux de Marseille",
+        "description": "Enter your espaceclients.eauxdemarseille.fr credentials.",
+        "data": {
+          "username": "Email address",
+          "password": "Password",
+          "contract_id": "Contract number"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid credentials. Check your email and password.",
+      "cannot_connect": "Unable to connect to the portal. Try again later."
+    },
+    "abort": {
+      "already_configured": "This contract is already configured."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "current_month_m3": { "name": "Current month" },
+      "current_month_litres": { "name": "Current month (litres)" },
+      "current_year_m3": { "name": "Current year" },
+      "index_m3": { "name": "Meter index" },
+      "daily_average_m3": { "name": "Daily average" },
+      "last_reading_m3": { "name": "Last reading" },
+      "last_reading_litres": { "name": "Last reading (litres)" },
+      "last_reading_date": { "name": "Last reading date" },
+      "last_reading_days": { "name": "Last reading period" },
+      "previous_reading_m3": { "name": "Previous reading" },
+      "previous_reading_date": { "name": "Previous reading date" },
+      "total_readings": { "name": "Total readings" }
+    }
+  }
+}

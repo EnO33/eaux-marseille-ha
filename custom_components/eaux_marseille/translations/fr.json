@@ -1,0 +1,38 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Eaux de Marseille",
+        "description": "Entrez vos identifiants espaceclients.eauxdemarseille.fr.",
+        "data": {
+          "username": "Adresse e-mail",
+          "password": "Mot de passe",
+          "contract_id": "Numéro de contrat"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Identifiants invalides. Vérifiez votre e-mail et votre mot de passe.",
+      "cannot_connect": "Impossible de se connecter au portail. Réessayez plus tard."
+    },
+    "abort": {
+      "already_configured": "Ce contrat est déjà configuré."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "current_month_m3": { "name": "Mois en cours" },
+      "current_month_litres": { "name": "Mois en cours (litres)" },
+      "current_year_m3": { "name": "Année en cours" },
+      "index_m3": { "name": "Index compteur" },
+      "daily_average_m3": { "name": "Moyenne journalière" },
+      "last_reading_m3": { "name": "Dernier relevé" },
+      "last_reading_litres": { "name": "Dernier relevé (litres)" },
+      "last_reading_date": { "name": "Date du dernier relevé" },
+      "last_reading_days": { "name": "Durée de la période" },
+      "previous_reading_m3": { "name": "Relevé précédent" },
+      "previous_reading_date": { "name": "Date du relevé précédent" },
+      "total_readings": { "name": "Nombre de relevés" }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "Eaux de Marseille",
+  "domains": ["sensor"],
+  "documentation": "https://github.com/EnO33/eaux-marseille-ha",
+  "issue_tracker": "https://github.com/EnO33/eaux-marseille-ha/issues",
+  "render_readme": true
+}

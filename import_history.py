@@ -4,7 +4,7 @@ Historical statistics importer for Home Assistant.
 
 Fetches all available monthly water consumption data from the Eaux de
 Marseille portal and injects it into Home Assistant's long-term statistics
-database via the WebSocket API (same method used by MyElectricalData).
+database via the REST API.
 
 Run this script once after initial setup to backfill historical data.
 Subsequent updates are handled automatically by fetch.py every hour.
@@ -17,6 +17,18 @@ HA_TOKEN    : Long-lived access token generated in HA user profile
 Usage
 -----
     python3 import_history.py
+
+Home Assistant configuration (configuration.yaml)
+--------------------------------------------------
+Ensure the following template sensor exists before running this script:
+
+    template:
+      - sensor:
+          - name: "Eau Marseille Mois M3"
+            state: "{{ state_attr('sensor.eau_marseille', 'conso_mois_m3') | float(0) }}"
+            unit_of_measurement: "m³"
+            device_class: water
+            state_class: measurement
 """
 
 import json
@@ -27,7 +39,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
-import websocket
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -39,8 +50,11 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+# Statistic ID must match the entity created by the template sensor
 _STATISTIC_ID = "sensor.eau_marseille_mois_m3"
 _UNIT = "m³"
+
+# Fetch data starting from this year (portal data goes back to installation)
 _START_YEAR = 2024
 
 
@@ -61,12 +75,18 @@ def fetch_monthly_range(
         f"/Consommation/listeConsommationsInstanceAlerteChart"
         f"/{contract_id}/{start}/{end}/MOIS/true"
     )
+    # Access private helper directly — acceptable for a one-shot importer
     data = client._get(path)  # noqa: SLF001
     return data.get("consommations", [])
 
 
 def build_statistics(entries: list[dict]) -> list[dict]:
-    """Convert API entries to HA statistics format."""
+    """
+    Convert API consumption entries to HA statistics format.
+
+    Each entry represents one calendar month. HA expects start timestamps
+    in ISO 8601 format with timezone offset.
+    """
     stats = []
     for entry in entries:
         value = entry.get("volumeConsoEnM3")
@@ -84,52 +104,39 @@ def build_statistics(entries: list[dict]) -> list[dict]:
     return stats
 
 
-def import_via_websocket(ha_url: str, ha_token: str, stats: list[dict]) -> None:
-    """Push statistics to Home Assistant via the WebSocket API."""
-    ws_url = ha_url.rstrip("/").replace("http://", "ws://").replace("https://", "wss://")
-    ws_url += "/api/websocket"
+def import_statistics(ha_url: str, ha_token: str, stats: list[dict]) -> None:
+    """Push statistics to Home Assistant via the recorder import endpoint."""
+    if not stats:
+        logger.warning("No statistics to import.")
+        return
 
-    logger.info("Connecting to %s ...", ws_url)
+    payload = {
+        "metadata": {
+            "has_mean": True,
+            "has_sum": False,
+            "name": "Eau Marseille Mois M3",
+            "source": "recorder",
+            "statistic_id": _STATISTIC_ID,
+            "unit_of_measurement": _UNIT,
+        },
+        "stats": stats,
+    }
 
-    ws = websocket.create_connection(ws_url, timeout=30)
+    headers = {
+        "Authorization": f"Bearer {ha_token}",
+        "Content-Type": "application/json",
+    }
 
-    try:
-        # Step 1 — receive auth_required
-        msg = json.loads(ws.recv())
-        assert msg["type"] == "auth_required", f"Unexpected: {msg}"
+    url = f"{ha_url.rstrip('/')}/api/recorder/import_statistics"
+    response = requests.post(url, json=payload, headers=headers, timeout=30)
 
-        # Step 2 — authenticate
-        ws.send(json.dumps({"type": "auth", "access_token": ha_token}))
-        msg = json.loads(ws.recv())
-        if msg["type"] != "auth_ok":
-            raise RuntimeError(f"Authentication failed: {msg}")
-        logger.info("WebSocket authenticated.")
-
-        # Step 3 — import statistics
-        payload = {
-            "id": 1,
-            "type": "recorder/import_statistics",
-            "metadata": {
-                "has_mean": True,
-                "has_sum": False,
-                "name": "Eau Marseille Mois M3",
-                "source": "recorder",
-                "statistic_id": _STATISTIC_ID,
-                "unit_of_measurement": _UNIT,
-            },
-            "stats": stats,
-        }
-        ws.send(json.dumps(payload))
-        msg = json.loads(ws.recv())
-
-        if msg.get("success"):
-            logger.info("Successfully imported %d monthly statistics.", len(stats))
-        else:
-            logger.error("Import failed: %s", msg)
-            sys.exit(1)
-
-    finally:
-        ws.close()
+    if response.status_code == 200:
+        logger.info("Successfully imported %d monthly statistics.", len(stats))
+    else:
+        logger.error(
+            "Import failed [HTTP %d]: %s", response.status_code, response.text
+        )
+        sys.exit(1)
 
 
 def main() -> int:
@@ -147,6 +154,7 @@ def main() -> int:
     try:
         with EauxDeMarseilleClient(config) as client:
             client.authenticate()
+
             for year in range(_START_YEAR, current_year + 1):
                 logger.info("Fetching monthly data for %d...", year)
                 entries = fetch_monthly_range(client, year, config.contract_id)
@@ -162,8 +170,8 @@ def main() -> int:
         logger.warning("No data retrieved from the portal.")
         return 1
 
-    logger.info("Importing %d total entries into Home Assistant...", len(all_stats))
-    import_via_websocket(ha_url, ha_token, all_stats)
+    logger.info("Importing %d total monthly entries into Home Assistant...", len(all_stats))
+    import_statistics(ha_url, ha_token, all_stats)
     return 0
 
 
