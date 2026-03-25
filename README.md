@@ -166,3 +166,41 @@ This project reverse-engineers the portal API for personal use. It is not suppor
 ## License
 
 MIT
+
+## Backfilling historical data
+
+After initial setup, run the import script once to populate historical monthly statistics in Home Assistant:
+
+### 1. Generate a long-lived access token in HA
+
+Go to **Profile → Long-Lived Access Tokens → Create Token**.
+
+### 2. Add HA variables to your `.env`
+
+```ini
+HA_URL=http://192.168.1.236:8123
+HA_TOKEN=your_long_lived_access_token
+```
+
+### 3. Run the importer
+
+```bash
+python3 import_history.py
+```
+
+Expected output:
+
+```
+INFO: Fetching monthly data for 2024...
+INFO:   -> 9 entries found.
+INFO: Fetching monthly data for 2025...
+INFO:   -> 12 entries found.
+INFO: Fetching monthly data for 2026...
+INFO:   -> 3 entries found.
+INFO: Importing 24 total monthly entries into Home Assistant...
+INFO: Successfully imported 24 monthly statistics.
+```
+
+The `Consommation mensuelle` chart on the Eau dashboard will immediately show all historical data.
+
+This script only needs to be run once. Ongoing monthly updates are handled automatically by `fetch.py` via the `command_line` sensor polling every hour.
