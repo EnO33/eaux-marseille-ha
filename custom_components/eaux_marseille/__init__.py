@@ -35,11 +35,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    hass.async_create_task(
-        async_import_historical_statistics(
-            hass, client, entry.data[CONF_CONTRACT_ID]
-        )
-    )
+
+    async def _run_import() -> None:
+        try:
+            await async_import_historical_statistics(
+                hass, client, entry.data[CONF_CONTRACT_ID]
+            )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.exception("Failed to import historical statistics: %s", err)
+
+    hass.async_create_task(_run_import())
+
     return True
 
 
