@@ -46,7 +46,7 @@ async def async_import_historical_statistics(
 
         _LOGGER.debug("Starting historical statistics import for contract %s", contract_id)
 
-        statistic_id = f"{DOMAIN}:{contract_id}_monthly_consumption"
+        statistic_id = f"{DOMAIN}:monthly_consumption_{contract_id}"
 
         existing = await instance.async_add_executor_job(
             get_last_statistics, hass, 1, statistic_id, True, {"sum"}
