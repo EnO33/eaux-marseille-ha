@@ -21,7 +21,7 @@ from custom_components.eaux_marseille.const import DOMAIN
 
 from .conftest import MOCK_CONFIG_ENTRY_DATA, MOCK_CONTRACT_ID
 
-pytestmark = pytest.mark.ha_required
+pytestmark = [pytest.mark.ha_required, pytest.mark.usefixtures("enable_custom_integrations")]
 
 
 async def test_user_flow_success(hass: HomeAssistant, mock_client: MagicMock) -> None:
@@ -83,7 +83,9 @@ async def test_user_flow_cannot_connect(hass: HomeAssistant, mock_client: MagicM
     assert result["errors"] == {"base": "cannot_connect"}
 
 
-async def test_user_flow_duplicate(hass: HomeAssistant, mock_client: MagicMock, mock_config_entry) -> None:
+async def test_user_flow_duplicate(
+    hass: HomeAssistant, mock_client: MagicMock, mock_config_entry
+) -> None:
     """Test config flow aborts on duplicate contract."""
     with patch(
         "custom_components.eaux_marseille.config_flow.EauxDeMarseilleClient",

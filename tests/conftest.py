@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from unittest.mock import MagicMock
 
@@ -42,16 +43,6 @@ except (ImportError, ModuleNotFoundError):
 
 from custom_components.eaux_marseille.api import ConsumptionData, EauxDeMarseilleClient
 
-
-def pytest_collection_modifyitems(config, items):
-    """Skip tests marked ha_required when HA is not installed."""
-    if HAS_HA:
-        return
-    skip_ha = pytest.mark.skip(reason="Requires Home Assistant (CI only)")
-    for item in items:
-        if "ha_required" in item.keywords:
-            item.add_marker(skip_ha)
-
 MOCK_USERNAME = "user@example.com"
 MOCK_PASSWORD = "s3cret"  # noqa: S105
 MOCK_CONTRACT_ID = "1234567"
@@ -84,6 +75,16 @@ MOCK_MONTHLY_ENTRIES = [
 ]
 
 
+def pytest_collection_modifyitems(config, items):
+    """Skip tests marked ha_required when HA is not installed."""
+    if HAS_HA:
+        return
+    skip_ha = pytest.mark.skip(reason="Requires Home Assistant (CI only)")
+    for item in items:
+        if "ha_required" in item.keywords:
+            item.add_marker(skip_ha)
+
+
 @pytest.fixture
 def mock_client() -> MagicMock:
     """Return a mocked EauxDeMarseilleClient."""
@@ -93,3 +94,32 @@ def mock_client() -> MagicMock:
     client.fetch_monthly_range.return_value = MOCK_MONTHLY_ENTRIES
     client.close.return_value = None
     return client
+
+
+if HAS_HA:
+    from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+
+    from custom_components.eaux_marseille.const import CONF_CONTRACT_ID, DOMAIN
+
+    @pytest.fixture
+    def mock_config_entry(hass):
+        """Return a MockConfigEntry added to hass."""
+        from unittest.mock import patch
+
+        from homeassistant.config_entries import ConfigEntry
+
+        entry = ConfigEntry(
+            version=1,
+            minor_version=1,
+            domain=DOMAIN,
+            title=f"Contrat {MOCK_CONTRACT_ID}",
+            data={
+                CONF_USERNAME: MOCK_USERNAME,
+                CONF_PASSWORD: MOCK_PASSWORD,
+                CONF_CONTRACT_ID: MOCK_CONTRACT_ID,
+            },
+            source="user",
+            unique_id=MOCK_CONTRACT_ID,
+        )
+        entry.add_to_hass(hass)
+        return entry

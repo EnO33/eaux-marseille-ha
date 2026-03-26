@@ -12,16 +12,19 @@ import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
-pytestmark = pytest.mark.ha_required
-
 from custom_components.eaux_marseille.const import DOMAIN, ENTRY_CLIENT, ENTRY_COORDINATOR
 
 from .conftest import MOCK_CONFIG_ENTRY_DATA, MOCK_CONTRACT_ID, MOCK_CONSUMPTION
+
+pytestmark = [pytest.mark.ha_required, pytest.mark.usefixtures("enable_custom_integrations")]
 
 
 async def test_sensors_created(hass: HomeAssistant, mock_client: MagicMock, mock_config_entry) -> None:
     """All expected sensors are created on setup."""
     with patch(
+        "custom_components.eaux_marseille.EauxDeMarseilleClient",
+        return_value=mock_client,
+    ), patch(
         "custom_components.eaux_marseille.coordinator.EauxDeMarseilleCoordinator._async_update_data",
         return_value=MOCK_CONSUMPTION,
     ), patch(
@@ -55,6 +58,9 @@ async def test_sensors_created(hass: HomeAssistant, mock_client: MagicMock, mock
 async def test_sensor_values(hass: HomeAssistant, mock_client: MagicMock, mock_config_entry) -> None:
     """Sensor states reflect the consumption data."""
     with patch(
+        "custom_components.eaux_marseille.EauxDeMarseilleClient",
+        return_value=mock_client,
+    ), patch(
         "custom_components.eaux_marseille.coordinator.EauxDeMarseilleCoordinator._async_update_data",
         return_value=MOCK_CONSUMPTION,
     ), patch(

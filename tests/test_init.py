@@ -11,11 +11,11 @@ import pytest
 
 from homeassistant.core import HomeAssistant
 
-pytestmark = pytest.mark.ha_required
-
 from custom_components.eaux_marseille.const import DOMAIN, ENTRY_CLIENT, ENTRY_COORDINATOR
 
 from .conftest import MOCK_CONSUMPTION, MOCK_CONTRACT_ID
+
+pytestmark = [pytest.mark.ha_required, pytest.mark.usefixtures("enable_custom_integrations")]
 
 
 async def test_setup_entry(hass: HomeAssistant, mock_client: MagicMock, mock_config_entry) -> None:

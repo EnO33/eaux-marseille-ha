@@ -5,27 +5,31 @@ These tests require a full Home Assistant environment and only run in CI.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
 from homeassistant.core import HomeAssistant
 
-pytestmark = pytest.mark.ha_required
-
 from custom_components.eaux_marseille.const import DOMAIN
 from custom_components.eaux_marseille.statistics import async_import_historical_statistics
 
 from .conftest import MOCK_CONTRACT_ID, MOCK_MONTHLY_ENTRIES
+
+pytestmark = pytest.mark.ha_required
 
 
 @pytest.fixture
 def mock_recorder(hass: HomeAssistant):
     """Mock the recorder instance."""
     instance = MagicMock()
-    instance.async_db_ready = AsyncMock()
+    # async_db_ready is an asyncio.Event in the real recorder
+    db_ready = asyncio.Event()
+    db_ready.set()
+    type(instance).async_db_ready = PropertyMock(return_value=db_ready)
     instance.async_add_executor_job = hass.async_add_executor_job
 
     with patch(
@@ -90,7 +94,6 @@ async def test_import_skips_existing(
     mock_add_external_stats,
 ) -> None:
     """Import skips entries older than the last imported timestamp."""
-    # Pretend we already have data up to August 2024
     last_ts = datetime(2024, 8, 15, tzinfo=timezone.utc).timestamp()
     statistic_id = f"{DOMAIN}:monthly_consumption_{MOCK_CONTRACT_ID}"
 
@@ -103,12 +106,11 @@ async def test_import_skips_existing(
         mock_client.fetch_monthly_range.return_value = MOCK_MONTHLY_ENTRIES
         await async_import_historical_statistics(hass, mock_client, MOCK_CONTRACT_ID)
 
-    # Only September entry (after Aug 15) should be imported
     mock_add_external_stats.assert_called_once()
     stats = mock_add_external_stats.call_args.args[2]
     assert len(stats) == 1
     assert stats[0]["state"] == 2.0
-    assert stats[0]["sum"] == 9.5  # 7.5 (existing) + 2.0
+    assert stats[0]["sum"] == 9.5
 
 
 async def test_import_no_new_data(
@@ -135,9 +137,9 @@ async def test_import_handles_api_failure(
 ) -> None:
     """Import continues when one year fails to fetch."""
     mock_client.fetch_monthly_range.side_effect = [
-        Exception("API down"),  # first year fails
-        MOCK_MONTHLY_ENTRIES,   # second year succeeds
-        [],                     # current year empty
+        Exception("API down"),
+        MOCK_MONTHLY_ENTRIES,
+        [],
     ]
 
     await async_import_historical_statistics(hass, mock_client, MOCK_CONTRACT_ID)
