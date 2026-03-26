@@ -26,10 +26,10 @@ pytestmark = pytest.mark.ha_required
 def mock_recorder(hass: HomeAssistant):
     """Mock the recorder instance."""
     instance = MagicMock()
-    # async_db_ready is an asyncio.Event in the real recorder
-    db_ready = asyncio.Event()
-    db_ready.set()
-    type(instance).async_db_ready = PropertyMock(return_value=db_ready)
+    # async_db_ready must be awaitable — use a resolved Future.
+    future = asyncio.get_event_loop().create_future()
+    future.set_result(True)
+    type(instance).async_db_ready = PropertyMock(return_value=future)
     instance.async_add_executor_job = hass.async_add_executor_job
 
     with patch(

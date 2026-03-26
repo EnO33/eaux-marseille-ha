@@ -98,19 +98,14 @@ def mock_client() -> MagicMock:
 
 if HAS_HA:
     from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
 
     from custom_components.eaux_marseille.const import CONF_CONTRACT_ID, DOMAIN
 
     @pytest.fixture
     def mock_config_entry(hass):
         """Return a MockConfigEntry added to hass."""
-        from unittest.mock import patch
-
-        from homeassistant.config_entries import ConfigEntry
-
-        entry = ConfigEntry(
-            version=1,
-            minor_version=1,
+        entry = MockConfigEntry(
             domain=DOMAIN,
             title=f"Contrat {MOCK_CONTRACT_ID}",
             data={
@@ -118,7 +113,6 @@ if HAS_HA:
                 CONF_PASSWORD: MOCK_PASSWORD,
                 CONF_CONTRACT_ID: MOCK_CONTRACT_ID,
             },
-            source="user",
             unique_id=MOCK_CONTRACT_ID,
         )
         entry.add_to_hass(hass)
