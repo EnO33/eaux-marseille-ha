@@ -66,7 +66,7 @@ async def test_import_creates_statistics(
     mock_add_external_stats,
 ) -> None:
     """Import creates statistics from monthly data."""
-    mock_client.fetch_monthly_range.return_value = MOCK_MONTHLY_ENTRIES
+    mock_client.fetch_monthly_range.side_effect = [MOCK_MONTHLY_ENTRIES, [], []]
 
     await async_import_historical_statistics(hass, mock_client, MOCK_CONTRACT_ID)
 
@@ -103,7 +103,7 @@ async def test_import_skips_existing(
             statistic_id: [{"start": last_ts, "sum": 7.5}]
         },
     ):
-        mock_client.fetch_monthly_range.return_value = MOCK_MONTHLY_ENTRIES
+        mock_client.fetch_monthly_range.side_effect = [MOCK_MONTHLY_ENTRIES, [], []]
         await async_import_historical_statistics(hass, mock_client, MOCK_CONTRACT_ID)
 
     mock_add_external_stats.assert_called_once()
@@ -157,10 +157,14 @@ async def test_import_skips_entries_without_date(
     mock_add_external_stats,
 ) -> None:
     """Import skips entries with missing date or volume."""
-    mock_client.fetch_monthly_range.return_value = [
-        {"dateReleve": "", "volumeConsoEnM3": 3.0},
-        {"dateReleve": "2024-07-15T00:00:00+02:00", "volumeConsoEnM3": None},
-        {"dateReleve": "2024-08-15T00:00:00+02:00", "volumeConsoEnM3": 4.5},
+    mock_client.fetch_monthly_range.side_effect = [
+        [
+            {"dateReleve": "", "volumeConsoEnM3": 3.0},
+            {"dateReleve": "2024-07-15T00:00:00+02:00", "volumeConsoEnM3": None},
+            {"dateReleve": "2024-08-15T00:00:00+02:00", "volumeConsoEnM3": 4.5},
+        ],
+        [],
+        [],
     ]
 
     await async_import_historical_statistics(hass, mock_client, MOCK_CONTRACT_ID)
