@@ -10,7 +10,7 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 
-from .api import EauxDeMarseilleAuthError, EauxDeMarseilleClient
+from .api import EauxDeMarseilleApiError, EauxDeMarseilleAuthError, EauxDeMarseilleClient
 from .const import CONF_CONTRACT_ID, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -46,8 +46,12 @@ class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):
 
             try:
                 await self.hass.async_add_executor_job(client.authenticate)
-            except EauxDeMarseilleAuthError:
+            except EauxDeMarseilleAuthError as err:
+                _LOGGER.warning("Authentication failed: %s", err)
                 errors["base"] = "invalid_auth"
+            except EauxDeMarseilleApiError as err:
+                _LOGGER.error("API error during setup: %s", err)
+                errors["base"] = "cannot_connect"
             except Exception:  # noqa: BLE001
                 _LOGGER.exception("Unexpected error during authentication")
                 errors["base"] = "cannot_connect"

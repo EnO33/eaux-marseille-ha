@@ -85,10 +85,15 @@ class EauxDeMarseilleClient:
 
     def authenticate(self) -> None:
         """Perform the full authentication flow."""
+        _LOGGER.debug("Step 1/5: Acquiring session cookie")
         self._acquire_session_cookie()
+        _LOGGER.debug("Step 2/5: Generating token")
         temp_token = self._generate_token()
+        _LOGGER.debug("Step 3/5: Logging in user")
         ael_token, user_info = self._login_user(temp_token)
+        _LOGGER.debug("Step 4/5: Fetching default contract")
         contract = self._get_default_contract()
+        _LOGGER.debug("Step 5/5: Setting context cookie")
         self._set_context_cookie(contract, user_info, ael_token)
         _LOGGER.debug("Authentication successful")
 
