@@ -9,6 +9,7 @@ espaceclients.eauxdemarseille.fr customer portal.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import urllib.parse
 import uuid
@@ -120,17 +121,17 @@ class EauxDeMarseilleClient:
 
     async def authenticate(self) -> None:
         """Perform the full authentication flow."""
-        _LOGGER.debug("Step 1/5: Acquiring session cookie")
+        _LOGGER.info("Authentication: step 1/5 (acquiring session cookie)")
         await self._acquire_session_cookie()
-        _LOGGER.debug("Step 2/5: Generating token")
+        _LOGGER.info("Authentication: step 2/5 (generating token)")
         temp_token = await self._generate_token()
-        _LOGGER.debug("Step 3/5: Logging in user")
+        _LOGGER.info("Authentication: step 3/5 (logging in user)")
         ael_token, user_info = await self._login_user(temp_token)
-        _LOGGER.debug("Step 4/5: Fetching default contract")
+        _LOGGER.info("Authentication: step 4/5 (fetching default contract)")
         contract = await self._get_default_contract()
-        _LOGGER.debug("Step 5/5: Setting context cookie")
+        _LOGGER.info("Authentication: step 5/5 (setting context cookie)")
         self._set_context_cookie(contract, user_info, ael_token)
-        _LOGGER.debug("Authentication successful")
+        _LOGGER.info("Authentication successful")
 
     async def fetch(self) -> ConsumptionData:
         """Fetch and return all consumption data."""
@@ -201,6 +202,12 @@ class EauxDeMarseilleClient:
                 async with self._session.request(
                     method, url, headers=headers, timeout=self._timeout, **kwargs
                 ) as response:
+                    content_type = response.headers.get("Content-Type", "<none>")
+                    _LOGGER.debug(
+                        "%s %s → HTTP %d (content-type=%s)",
+                        method, url, response.status, content_type,
+                    )
+
                     # 4xx: client error, don't retry
                     if 400 <= response.status < 500:
                         text = await response.text()
@@ -216,9 +223,24 @@ class EauxDeMarseilleClient:
                             status=response.status,
                             message=text[:200],
                         )
-                    if expect_json:
-                        return await response.json()
-                    return None
+                    if not expect_json:
+                        return None
+
+                    # Parse JSON with clear error if the body isn't JSON.
+                    # The portal sometimes returns HTML (login redirect, WAF block,
+                    # CDN error page) with a 200 status — detect and report this.
+                    try:
+                        return await response.json(content_type=None)
+                    except (
+                        json.JSONDecodeError,
+                        aiohttp.ContentTypeError,
+                    ) as err:
+                        body = await response.text()
+                        raise EauxDeMarseilleApiError(
+                            f"Expected JSON from {url} but got "
+                            f"content-type={content_type}, status={response.status}. "
+                            f"Body starts with: {body[:200]!r}"
+                        ) from err
             except (asyncio.TimeoutError, aiohttp.ClientError) as err:
                 last_error = err
                 if attempt < _MAX_RETRIES - 1:
@@ -245,6 +267,15 @@ class EauxDeMarseilleClient:
                 allow_redirects=True,
             ) as response:
                 await response.read()
+                _LOGGER.debug(
+                    "Portal landing page: HTTP %d (final URL: %s)",
+                    response.status, response.url,
+                )
+                if response.status >= 400:
+                    raise EauxDeMarseilleApiError(
+                        f"Portal returned HTTP {response.status} on landing page "
+                        f"(final URL: {response.url})"
+                    )
         except (asyncio.TimeoutError, aiohttp.ClientError) as err:
             raise EauxDeMarseilleApiError(f"Failed to reach portal: {err}") from err
 

@@ -45,22 +45,22 @@ class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):
             )
 
             try:
-                await client.authenticate()
-            except EauxDeMarseilleAuthError as err:
-                _LOGGER.warning("Authentication failed: %s", err)
-                errors["base"] = "invalid_auth"
-            except EauxDeMarseilleApiError as err:
-                _LOGGER.error("API error during setup: %s", err)
-                errors["base"] = "cannot_connect"
-            except Exception:  # noqa: BLE001
-                _LOGGER.exception("Unexpected error during authentication")
-                errors["base"] = "cannot_connect"
-            else:
-                await client.close()
-                return self.async_create_entry(
-                    title=f"Contrat {user_input[CONF_CONTRACT_ID]}",
-                    data=user_input,
-                )
+                try:
+                    await client.authenticate()
+                except EauxDeMarseilleAuthError as err:
+                    _LOGGER.warning("Authentication failed: %s", err)
+                    errors["base"] = "invalid_auth"
+                except EauxDeMarseilleApiError as err:
+                    _LOGGER.error("API error during setup: %s", err)
+                    errors["base"] = "cannot_connect"
+                except Exception:  # noqa: BLE001
+                    _LOGGER.exception("Unexpected error during authentication")
+                    errors["base"] = "cannot_connect"
+                else:
+                    return self.async_create_entry(
+                        title=f"Contrat {user_input[CONF_CONTRACT_ID]}",
+                        data=user_input,
+                    )
             finally:
                 await client.close()
 
