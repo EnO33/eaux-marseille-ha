@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -87,12 +87,12 @@ def pytest_collection_modifyitems(config, items):
 
 @pytest.fixture
 def mock_client() -> MagicMock:
-    """Return a mocked EauxDeMarseilleClient."""
+    """Return a mocked EauxDeMarseilleClient with async methods."""
     client = MagicMock(spec=EauxDeMarseilleClient)
-    client.authenticate.return_value = None
-    client.fetch.return_value = MOCK_CONSUMPTION
-    client.fetch_monthly_range.return_value = MOCK_MONTHLY_ENTRIES
-    client.close.return_value = None
+    client.authenticate = AsyncMock(return_value=None)
+    client.fetch = AsyncMock(return_value=MOCK_CONSUMPTION)
+    client.fetch_monthly_range = AsyncMock(return_value=MOCK_MONTHLY_ENTRIES)
+    client.close = AsyncMock(return_value=None)
     return client
 
 

@@ -65,9 +65,7 @@ async def async_import_historical_statistics(
 
         for year in range(_START_YEAR, current_year + 1):
             try:
-                entries = await hass.async_add_executor_job(
-                    client.fetch_monthly_range, year
-                )
+                entries = await client.fetch_monthly_range(year)
                 _LOGGER.debug("Year %d: fetched %d entries", year, len(entries))
             except Exception as err:  # noqa: BLE001
                 _LOGGER.warning("Could not fetch history for %d: %s", year, err)

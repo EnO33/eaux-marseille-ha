@@ -1,10 +1,10 @@
 {
   "domain": "eaux_marseille",
   "name": "Eaux de Marseille",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "documentation": "https://github.com/EnO33/eaux-marseille-ha",
   "issue_tracker": "https://github.com/EnO33/eaux-marseille-ha/issues",
-  "requirements": ["requests>=2.31.0"],
+  "requirements": [],
   "config_flow": true,
   "iot_class": "cloud_polling",
   "codeowners": []

@@ -30,8 +30,8 @@ class EauxDeMarseilleCoordinator(DataUpdateCoordinator[ConsumptionData]):
 
     async def _async_update_data(self) -> ConsumptionData:
         try:
-            await self.hass.async_add_executor_job(self.client.authenticate)
-            return await self.hass.async_add_executor_job(self.client.fetch)
+            await self.client.authenticate()
+            return await self.client.fetch()
         except EauxDeMarseilleAuthError as err:
             raise UpdateFailed(f"Authentication error: {err}") from err
         except EauxDeMarseilleApiError as err:

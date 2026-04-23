@@ -1,12 +1,14 @@
 """
 Eaux de Marseille API client.
 
+Async client using aiohttp, with retry logic for transient network errors.
 Handles authentication and data retrieval from the
 espaceclients.eauxdemarseille.fr customer portal.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import urllib.parse
 import uuid
@@ -14,7 +16,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-import requests
+import aiohttp
+from yarl import URL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -26,6 +29,22 @@ _DOMAIN = "espaceclients.eauxdemarseille.fr"
 # These identify the web client to the API and are not user credentials.
 _CLIENT_ID = "SOMEI-GSEM-PRD"
 _ACCESS_KEY = "XX_ma2DD-2017-GSEM-PRD!"
+
+# Retry settings for transient failures (network errors, timeouts, 5xx).
+_MAX_RETRIES = 3
+_BACKOFF_BASE = 1.0  # seconds, doubled each attempt (1s, 2s, 4s)
+
+_DEFAULT_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/122.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json, text/plain, */*",
+    "Content-Type": "application/json",
+    "Origin": _PORTAL_URL,
+    "Referer": f"{_PORTAL_URL}/",
+}
 
 
 def _conversation_id() -> str:
@@ -59,49 +78,65 @@ class ConsumptionData:
 
 
 class EauxDeMarseilleClient:
-    """
-    Client for the Eaux de Marseille customer portal API.
+    """Async client for the Eaux de Marseille customer portal API.
+
+    Uses aiohttp with automatic retry on transient network errors.
 
     Usage::
 
-        client = EauxDeMarseilleClient(login, password, contract_id)
-        client.authenticate()
-        data = client.fetch()
+        async with aiohttp.ClientSession() as session:
+            client = EauxDeMarseilleClient(login, password, contract_id, session=session)
+            await client.authenticate()
+            data = await client.fetch()
     """
 
-    def __init__(self, login: str, password: str, contract_id: str, timeout: int = 15) -> None:
+    def __init__(
+        self,
+        login: str,
+        password: str,
+        contract_id: str,
+        session: aiohttp.ClientSession | None = None,
+        timeout: int = 15,
+    ) -> None:
         self._login = login
         self._password = password
         self._contract_id = contract_id
-        self._timeout = timeout
-        self._session = self._build_session()
+        self._timeout = aiohttp.ClientTimeout(total=timeout)
+        self._owns_session = session is None
+        self._session = session or aiohttp.ClientSession(
+            cookie_jar=aiohttp.CookieJar(unsafe=True),
+            timeout=self._timeout,
+        )
+        self._token: str | None = None
 
-    def close(self) -> None:
-        self._session.close()
+    async def close(self) -> None:
+        """Close the underlying session if we own it."""
+        if self._owns_session and not self._session.closed:
+            await self._session.close()
 
     # ------------------------------------------------------------------
     # Public interface
     # ------------------------------------------------------------------
 
-    def authenticate(self) -> None:
+    async def authenticate(self) -> None:
         """Perform the full authentication flow."""
         _LOGGER.debug("Step 1/5: Acquiring session cookie")
-        self._acquire_session_cookie()
+        await self._acquire_session_cookie()
         _LOGGER.debug("Step 2/5: Generating token")
-        temp_token = self._generate_token()
+        temp_token = await self._generate_token()
         _LOGGER.debug("Step 3/5: Logging in user")
-        ael_token, user_info = self._login_user(temp_token)
+        ael_token, user_info = await self._login_user(temp_token)
         _LOGGER.debug("Step 4/5: Fetching default contract")
-        contract = self._get_default_contract()
+        contract = await self._get_default_contract()
         _LOGGER.debug("Step 5/5: Setting context cookie")
         self._set_context_cookie(contract, user_info, ael_token)
         _LOGGER.debug("Authentication successful")
 
-    def fetch(self) -> ConsumptionData:
+    async def fetch(self) -> ConsumptionData:
         """Fetch and return all consumption data."""
-        last = self._fetch_last_billed()
-        monthly = self._fetch_monthly()
-        history = self._fetch_history()
+        last = await self._fetch_last_billed()
+        monthly = await self._fetch_monthly()
+        history = await self._fetch_history()
 
         readings = history.get("resultats", [])
         previous = readings[1] if len(readings) > 1 else {}
@@ -125,7 +160,7 @@ class EauxDeMarseilleClient:
             total_readings=history.get("nbTotalResultats", 0),
         )
 
-    def fetch_monthly_range(self, year: int) -> list[dict[str, Any]]:
+    async def fetch_monthly_range(self, year: int) -> list[dict[str, Any]]:
         """Fetch monthly consumption entries for a given calendar year."""
         start = int(datetime(year, 1, 1, tzinfo=timezone.utc).timestamp())
         end = int(datetime(year, 12, 31, 23, 59, 59, tzinfo=timezone.utc).timestamp())
@@ -133,67 +168,126 @@ class EauxDeMarseilleClient:
             f"/Consommation/listeConsommationsInstanceAlerteChart"
             f"/{self._contract_id}/{start}/{end}/MOIS/true"
         )
-        return self._get(path).get("consommations", [])
+        data = await self._get(path)
+        return data.get("consommations", [])
+
+    # ------------------------------------------------------------------
+    # HTTP helpers with retry
+    # ------------------------------------------------------------------
+
+    async def _request(
+        self,
+        method: str,
+        url: str,
+        *,
+        expect_json: bool = True,
+        extra_headers: dict[str, str] | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any] | None:
+        """HTTP request with retry on transient errors.
+
+        Retries on: network errors, timeouts, 5xx responses.
+        Does NOT retry on 4xx responses (they're not transient).
+        """
+        headers = {**_DEFAULT_HEADERS, "ConversationId": _conversation_id()}
+        if self._token:
+            headers["token"] = self._token
+        if extra_headers:
+            headers.update(extra_headers)
+
+        last_error: Exception | None = None
+        for attempt in range(_MAX_RETRIES):
+            try:
+                async with self._session.request(
+                    method, url, headers=headers, timeout=self._timeout, **kwargs
+                ) as response:
+                    # 4xx: client error, don't retry
+                    if 400 <= response.status < 500:
+                        text = await response.text()
+                        raise EauxDeMarseilleApiError(
+                            f"HTTP {response.status} at {url}: {text[:200]}"
+                        )
+                    # 5xx: server error, will retry
+                    if response.status >= 500:
+                        text = await response.text()
+                        raise aiohttp.ClientResponseError(
+                            response.request_info,
+                            response.history,
+                            status=response.status,
+                            message=text[:200],
+                        )
+                    if expect_json:
+                        return await response.json()
+                    return None
+            except (asyncio.TimeoutError, aiohttp.ClientError) as err:
+                last_error = err
+                if attempt < _MAX_RETRIES - 1:
+                    delay = _BACKOFF_BASE * (2**attempt)
+                    _LOGGER.debug(
+                        "Request to %s failed (attempt %d/%d), retrying in %.1fs: %s",
+                        url, attempt + 1, _MAX_RETRIES, delay, err,
+                    )
+                    await asyncio.sleep(delay)
+
+        raise EauxDeMarseilleApiError(
+            f"Request to {url} failed after {_MAX_RETRIES} attempts: {last_error}"
+        )
 
     # ------------------------------------------------------------------
     # Authentication helpers
     # ------------------------------------------------------------------
 
-    def _build_session(self) -> requests.Session:
-        session = requests.Session()
-        session.headers.update(
-            {
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/122.0.0.0 Safari/537.36"
-                ),
-                "Accept": "application/json, text/plain, */*",
-                "Content-Type": "application/json",
-                "Origin": _PORTAL_URL,
-                "Referer": f"{_PORTAL_URL}/",
-            }
-        )
-        return session
+    async def _acquire_session_cookie(self) -> None:
+        self._token = None
+        try:
+            async with self._session.get(
+                f"{_PORTAL_URL}/", headers=_DEFAULT_HEADERS, timeout=self._timeout,
+                allow_redirects=True,
+            ) as response:
+                await response.read()
+        except (asyncio.TimeoutError, aiohttp.ClientError) as err:
+            raise EauxDeMarseilleApiError(f"Failed to reach portal: {err}") from err
 
-    def _acquire_session_cookie(self) -> None:
-        self._session.headers.pop("token", None)
-        self._session.get(f"{_PORTAL_URL}/", timeout=self._timeout, allow_redirects=True)
-
-    def _generate_token(self) -> str:
+    async def _generate_token(self) -> str:
         cid = _conversation_id()
-        self._session.headers["ConversationId"] = cid
-        self._session.headers["token"] = _ACCESS_KEY
         payload = {"ConversationId": cid, "ClientId": _CLIENT_ID, "AccessKey": _ACCESS_KEY}
-        response = self._session.post(
-            f"{_API_BASE}/Acces/generateToken", json=payload, timeout=self._timeout
-        )
+        headers = {"ConversationId": cid, "token": _ACCESS_KEY}
         try:
-            response.raise_for_status()
-        except requests.HTTPError as exc:
-            raise EauxDeMarseilleAuthError(f"Token generation failed: {exc}") from exc
-        return response.json()["token"]
+            data = await self._request(
+                "POST",
+                f"{_API_BASE}/Acces/generateToken",
+                extra_headers=headers,
+                json=payload,
+            )
+        except EauxDeMarseilleApiError as err:
+            raise EauxDeMarseilleAuthError(f"Token generation failed: {err}") from err
+        if not data or "token" not in data:
+            raise EauxDeMarseilleAuthError("Token generation returned unexpected response")
+        return data["token"]
 
-    def _login_user(self, temp_token: str) -> tuple[str, dict]:
-        self._session.headers["ConversationId"] = _conversation_id()
-        self._session.headers["token"] = temp_token
+    async def _login_user(self, temp_token: str) -> tuple[str, dict]:
+        self._token = temp_token
         payload = {"identifiant": self._login, "motDePasse": self._password}
-        response = self._session.post(
-            f"{_API_BASE}/Utilisateur/authentification", json=payload, timeout=self._timeout
-        )
         try:
-            response.raise_for_status()
-        except requests.HTTPError as exc:
-            raise EauxDeMarseilleAuthError(f"Login failed: {exc}") from exc
-        data = response.json()
+            data = await self._request(
+                "POST",
+                f"{_API_BASE}/Utilisateur/authentification",
+                json=payload,
+            )
+        except EauxDeMarseilleApiError as err:
+            raise EauxDeMarseilleAuthError(f"Login failed: {err}") from err
+        if not data or "tokenAuthentique" not in data:
+            raise EauxDeMarseilleAuthError("Login returned unexpected response")
         ael_token: str = data["tokenAuthentique"]
         user_info: dict = data["utilisateurInfo"]
-        self._session.headers["token"] = ael_token
-        self._session.cookies.set("aelToken", ael_token, domain=_DOMAIN)
+        self._token = ael_token
+        self._session.cookie_jar.update_cookies(
+            {"aelToken": ael_token}, response_url=URL(_PORTAL_URL)
+        )
         return ael_token, user_info
 
-    def _get_default_contract(self) -> dict:
-        return self._get("/Abonnement/getContratParDefaut/")
+    async def _get_default_contract(self) -> dict:
+        return await self._get("/Abonnement/getContratParDefaut/")
 
     def _set_context_cookie(self, contract: dict, user_info: dict, ael_token: str) -> None:
         context = {
@@ -212,36 +306,30 @@ class EauxDeMarseilleClient:
                 "profils": user_info.get("profils", []),
             },
         }
-        self._session.cookies.set(
-            "AEL_CONTEXT",
-            urllib.parse.quote_plus(str(context).replace("'", '"')),
-            domain=_DOMAIN,
+        self._session.cookie_jar.update_cookies(
+            {"AEL_CONTEXT": urllib.parse.quote_plus(str(context).replace("'", '"'))},
+            response_url=URL(_PORTAL_URL),
         )
 
     # ------------------------------------------------------------------
     # Data helpers
     # ------------------------------------------------------------------
 
-    def _fetch_last_billed(self) -> dict:
-        return self._get(f"/TableauDeBord/derniereConsommationFacturee/{self._contract_id}")
+    async def _fetch_last_billed(self) -> dict:
+        return await self._get(f"/TableauDeBord/derniereConsommationFacturee/{self._contract_id}")
 
-    def _fetch_monthly(self) -> dict:
+    async def _fetch_monthly(self) -> dict:
         now = datetime.now(timezone.utc)
         start = int(datetime(now.year, 1, 1, tzinfo=timezone.utc).timestamp())
         end = int(datetime(now.year, 12, 31, 23, 59, 59, tzinfo=timezone.utc).timestamp())
-        return self._get(
+        return await self._get(
             f"/Consommation/listeConsommationsInstanceAlerteChart"
             f"/{self._contract_id}/{start}/{end}/MOIS/true"
         )
 
-    def _fetch_history(self) -> dict:
-        return self._get(f"/Facturation/listeConsommationsFacturees/{self._contract_id}")
+    async def _fetch_history(self) -> dict:
+        return await self._get(f"/Facturation/listeConsommationsFacturees/{self._contract_id}")
 
-    def _get(self, path: str) -> dict:
-        self._session.headers["ConversationId"] = _conversation_id()
-        response = self._session.get(f"{_API_BASE}{path}", timeout=self._timeout)
-        try:
-            response.raise_for_status()
-        except requests.HTTPError as exc:
-            raise EauxDeMarseilleApiError(f"API request failed [{path}]: {exc}") from exc
-        return response.json()
+    async def _get(self, path: str) -> dict:
+        data = await self._request("GET", f"{_API_BASE}{path}")
+        return data or {}

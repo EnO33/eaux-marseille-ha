@@ -45,7 +45,7 @@ class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):
             )
 
             try:
-                await self.hass.async_add_executor_job(client.authenticate)
+                await client.authenticate()
             except EauxDeMarseilleAuthError as err:
                 _LOGGER.warning("Authentication failed: %s", err)
                 errors["base"] = "invalid_auth"
@@ -56,13 +56,13 @@ class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected error during authentication")
                 errors["base"] = "cannot_connect"
             else:
-                client.close()
+                await client.close()
                 return self.async_create_entry(
                     title=f"Contrat {user_input[CONF_CONTRACT_ID]}",
                     data=user_input,
                 )
             finally:
-                client.close()
+                await client.close()
 
         return self.async_show_form(
             step_id="user",
