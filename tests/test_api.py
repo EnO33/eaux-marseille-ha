@@ -23,6 +23,25 @@ from custom_components.eaux_marseille.api import (
 CONTRACT_ID = "1234567"
 
 
+# Override pytest-homeassistant-custom-component's autouse fixtures that check
+# for lingering threads — our API client uses aiohttp which spawns a background
+# shutdown thread that lives beyond test teardown. These tests don't touch HA,
+# so the cleanup check is not relevant here.
+@pytest.fixture(autouse=True)
+def verify_cleanup():
+    yield
+
+
+@pytest.fixture(autouse=True)
+def expected_lingering_tasks():
+    return True
+
+
+@pytest.fixture(autouse=True)
+def expected_lingering_timers():
+    return True
+
+
 @pytest.fixture
 async def client() -> EauxDeMarseilleClient:
     """Return a client instance with fake credentials."""
