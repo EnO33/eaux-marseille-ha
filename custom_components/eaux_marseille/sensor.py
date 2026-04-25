@@ -11,15 +11,15 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfVolume
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from . import EauxDeMarseilleConfigEntry
 from .api import ConsumptionData
-from .const import CONF_CONTRACT_ID, DOMAIN, ENTRY_COORDINATOR
+from .const import CONF_CONTRACT_ID, DOMAIN
 from .coordinator import EauxDeMarseilleCoordinator
 
 
@@ -129,11 +129,11 @@ SENSOR_DESCRIPTIONS: tuple[EauxDeMarseilleEntityDescription, ...] = (
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: EauxDeMarseilleConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Eaux de Marseille sensors from a config entry."""
-    coordinator: EauxDeMarseilleCoordinator = hass.data[DOMAIN][entry.entry_id][ENTRY_COORDINATOR]
+    coordinator = entry.runtime_data.coordinator
     contract_id: str = entry.data[CONF_CONTRACT_ID]
 
     async_add_entities(

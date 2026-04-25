@@ -12,9 +12,7 @@ import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
-from custom_components.eaux_marseille.const import DOMAIN, ENTRY_CLIENT, ENTRY_COORDINATOR
-
-from .conftest import MOCK_CONFIG_ENTRY_DATA, MOCK_CONTRACT_ID, MOCK_CONSUMPTION
+from .conftest import MOCK_CONTRACT_ID, MOCK_CONSUMPTION
 
 pytestmark = [pytest.mark.ha_required, pytest.mark.usefixtures("enable_custom_integrations")]
 

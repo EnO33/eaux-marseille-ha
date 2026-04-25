@@ -11,7 +11,7 @@ import pytest
 
 from homeassistant.core import HomeAssistant
 
-from custom_components.eaux_marseille.const import DOMAIN, ENTRY_CLIENT, ENTRY_COORDINATOR
+from custom_components.eaux_marseille import EauxDeMarseilleData
 
 from .conftest import MOCK_CONSUMPTION, MOCK_CONTRACT_ID
 
@@ -33,9 +33,9 @@ async def test_setup_entry(hass: HomeAssistant, mock_client: MagicMock, mock_con
         await hass.async_block_till_done()
 
     assert result is True
-    assert mock_config_entry.entry_id in hass.data[DOMAIN]
-    assert ENTRY_CLIENT in hass.data[DOMAIN][mock_config_entry.entry_id]
-    assert ENTRY_COORDINATOR in hass.data[DOMAIN][mock_config_entry.entry_id]
+    assert isinstance(mock_config_entry.runtime_data, EauxDeMarseilleData)
+    assert mock_config_entry.runtime_data.client is not None
+    assert mock_config_entry.runtime_data.coordinator is not None
 
 
 async def test_unload_entry(hass: HomeAssistant, mock_client: MagicMock, mock_config_entry) -> None:
@@ -56,5 +56,4 @@ async def test_unload_entry(hass: HomeAssistant, mock_client: MagicMock, mock_co
         await hass.async_block_till_done()
 
     assert result is True
-    assert mock_config_entry.entry_id not in hass.data[DOMAIN]
     mock_client.close.assert_called()
