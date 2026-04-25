@@ -4,3 +4,95 @@ asyncio_mode = "auto"
 markers = [
     "ha_required: tests requiring a full Home Assistant installation",
 ]
+
+# ---------------------------------------------------------------------
+# Ruff: linter + formatter (replaces flake8/black/isort/pyupgrade/...)
+# ---------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["brand"]
+
+[tool.ruff.lint]
+# Selection mirrors what Home Assistant core enforces, minus rules that
+# would fight legitimate stylistic choices for a HACS integration.
+select = [
+    "F",      # pyflakes
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "I",      # isort
+    "N",      # pep8-naming
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "ASYNC",  # flake8-async
+    "S",      # flake8-bandit (security)
+    "RUF",    # ruff-specific
+    "SIM",    # flake8-simplify
+    "TID",    # flake8-tidy-imports
+    "PTH",    # flake8-use-pathlib
+    "PL",     # pylint
+    "TRY",    # tryceratops (better try/except)
+    "PERF",   # perflint
+]
+ignore = [
+    "E501",     # line-too-long (we use the formatter for that)
+    "PLR0913",  # too-many-arguments (HA APIs commonly take many)
+    "TRY003",   # raise-vanilla-args (we want descriptive error messages)
+    "TRY300",   # try-consider-else (sometimes the linear flow is clearer)
+    "PLR2004",  # magic-number-comparison (HTTP status codes are well-known)
+    "S105",     # hardcoded-password-string (the portal AccessKey is public)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"custom_components/eaux_marseille/_http.py" = [
+    # The `timeout` parameter here is an `aiohttp.ClientTimeout` config
+    # object passed to `session.request()`, not a numeric deadline. Ruff's
+    # ASYNC109 suggestion to use `asyncio.timeout()` does not apply.
+    "ASYNC109",
+]
+"tests/*" = [
+    "S101",     # asserts are normal in tests
+    "PLR2004",  # magic numbers are normal in tests
+    "S106",     # hardcoded-password-func-arg (test fixtures use fake creds)
+    "SLF001",   # private-member-access (tests inspect internals)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["custom_components.eaux_marseille"]
+combine-as-imports = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ---------------------------------------------------------------------
+# Mypy: static type checking
+# ---------------------------------------------------------------------
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+warn_unused_ignores = true
+disallow_untyped_decorators = false  # HA decorators aren't always typed
+# HA / aiohttp / yarl don't ship type stubs in the form mypy expects,
+# so subclassing or returning their values gets typed as ``Any``. That's
+# fine in practice; we keep our own code strict but tolerate the gap
+# at the integration boundary.
+disallow_subclassing_any = false
+disallow_any_unimported = false
+plugins = []
+
+[[tool.mypy.overrides]]
+# We import a lot of HA helpers without strict types upstream.
+module = ["homeassistant.*", "aiohttp.*", "yarl.*", "voluptuous.*", "aioresponses.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Tests use a lot of MagicMock / monkey-patching that is hard to type strictly.
+module = ["tests.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disable_error_code = ["no-untyped-def", "type-arg", "no-untyped-call"]

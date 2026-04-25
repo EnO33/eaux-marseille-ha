@@ -67,16 +67,24 @@ async def request_with_retry(
     for attempt in range(MAX_RETRIES):
         try:
             return await _send_following_redirects(
-                session, method, url,
-                timeout=timeout, headers=headers, **kwargs,
+                session,
+                method,
+                url,
+                timeout=timeout,
+                headers=headers,
+                **kwargs,
             )
-        except (asyncio.TimeoutError, aiohttp.ClientError) as err:
+        except (TimeoutError, aiohttp.ClientError) as err:
             last_error = err
             if attempt < MAX_RETRIES - 1:
-                delay = BACKOFF_BASE_S * (2 ** attempt)
+                delay = BACKOFF_BASE_S * (2**attempt)
                 _LOGGER.debug(
                     "Request to %s failed (attempt %d/%d), retrying in %.1fs: %s",
-                    url, attempt + 1, MAX_RETRIES, delay, err,
+                    url,
+                    attempt + 1,
+                    MAX_RETRIES,
+                    delay,
+                    err,
                 )
                 await asyncio.sleep(delay)
 
@@ -106,20 +114,29 @@ async def _send_following_redirects(
         request_kwargs = _drop_body_after_get_redirect(kwargs, hop, current_method)
 
         async with session.request(
-            current_method, current_url,
-            timeout=timeout, headers=headers,
-            allow_redirects=False, **request_kwargs,
+            current_method,
+            current_url,
+            timeout=timeout,
+            headers=headers,
+            allow_redirects=False,
+            **request_kwargs,
         ) as response:
             content_type = response.headers.get("Content-Type", "<none>")
             _LOGGER.debug(
                 "%s %s → HTTP %d (content-type=%s)",
-                current_method, current_url, response.status, content_type,
+                current_method,
+                current_url,
+                response.status,
+                content_type,
             )
 
             if 300 <= response.status < 400:
                 current_method, current_url = await _resolve_redirect(
-                    response, current_method, current_url,
-                    hop=hop, initial_url=url,
+                    response,
+                    current_method,
+                    current_url,
+                    hop=hop,
+                    initial_url=url,
                 )
                 continue
 
@@ -134,8 +151,10 @@ async def _send_following_redirects(
                 # picks it up as transient.
                 text = await response.text()
                 raise aiohttp.ClientResponseError(
-                    response.request_info, response.history,
-                    status=response.status, message=text[:200],
+                    response.request_info,
+                    response.history,
+                    status=response.status,
+                    message=text[:200],
                 )
 
             return await _parse_json_or_raise(response, current_url, content_type)
@@ -184,7 +203,10 @@ async def _resolve_redirect(
 
     next_url = str(next_url_obj)
     _LOGGER.info(
-        "Following HTTP %d redirect: %s → %s", response.status, url, next_url,
+        "Following HTTP %d redirect: %s → %s",
+        response.status,
+        url,
+        next_url,
     )
 
     if hop >= MAX_REDIRECTS:
@@ -209,7 +231,7 @@ async def _parse_json_or_raise(
 ) -> dict[str, Any]:
     """Parse the body as JSON, surfacing HTML responses as a clear error."""
     try:
-        return await response.json(content_type=None)
+        data: dict[str, Any] = await response.json(content_type=None)
     except (json.JSONDecodeError, aiohttp.ContentTypeError) as err:
         body = await response.text()
         raise EauxDeMarseilleApiError(
@@ -217,10 +239,13 @@ async def _parse_json_or_raise(
             f"content-type={content_type}, status={response.status}. "
             f"Body starts with: {body[:200]!r}"
         ) from err
+    return data
 
 
 def _drop_body_after_get_redirect(
-    kwargs: dict[str, Any], hop: int, method: str,
+    kwargs: dict[str, Any],
+    hop: int,
+    method: str,
 ) -> dict[str, Any]:
     """Strip the request body when a redirect demoted us to GET.
 

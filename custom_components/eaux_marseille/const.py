@@ -26,7 +26,7 @@ API_BASE = f"{PORTAL_URL}/webapi"
 # Static application credentials embedded in the portal JavaScript bundle.
 # These identify the *web client* to the API and are not user credentials.
 APP_CLIENT_ID = "SOMEI-GSEM-PRD"
-APP_ACCESS_KEY = "XX_ma2DD-2017-GSEM-PRD!"  # noqa: S105 (public token)
+APP_ACCESS_KEY = "XX_ma2DD-2017-GSEM-PRD!"
 
 # ---------------------------------------------------------------------
 # HTTP behaviour

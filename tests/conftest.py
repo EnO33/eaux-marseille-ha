@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import sys
 from unittest.mock import AsyncMock, MagicMock
 
@@ -45,7 +44,7 @@ except (ImportError, ModuleNotFoundError):
 from custom_components.eaux_marseille.api import ConsumptionData, EauxDeMarseilleClient
 
 MOCK_USERNAME = "user@example.com"
-MOCK_PASSWORD = "s3cret"  # noqa: S105
+MOCK_PASSWORD = "s3cret"
 MOCK_CONTRACT_ID = "1234567"
 
 MOCK_CONFIG_ENTRY_DATA = {
@@ -70,9 +69,21 @@ MOCK_CONSUMPTION = ConsumptionData(
 )
 
 MOCK_MONTHLY_ENTRIES = [
-    {"dateReleve": "2024-07-15T00:00:00+02:00", "volumeConsoEnM3": 3.0, "volumeConsoEnLitres": 3000},
-    {"dateReleve": "2024-08-15T00:00:00+02:00", "volumeConsoEnM3": 4.5, "volumeConsoEnLitres": 4500},
-    {"dateReleve": "2024-09-15T00:00:00+02:00", "volumeConsoEnM3": 2.0, "volumeConsoEnLitres": 2000},
+    {
+        "dateReleve": "2024-07-15T00:00:00+02:00",
+        "volumeConsoEnM3": 3.0,
+        "volumeConsoEnLitres": 3000,
+    },
+    {
+        "dateReleve": "2024-08-15T00:00:00+02:00",
+        "volumeConsoEnM3": 4.5,
+        "volumeConsoEnLitres": 4500,
+    },
+    {
+        "dateReleve": "2024-09-15T00:00:00+02:00",
+        "volumeConsoEnM3": 2.0,
+        "volumeConsoEnLitres": 2000,
+    },
 ]
 
 

@@ -8,25 +8,30 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
-from .conftest import MOCK_CONTRACT_ID, MOCK_CONSUMPTION
+from .conftest import MOCK_CONSUMPTION, MOCK_CONTRACT_ID
 
 pytestmark = [pytest.mark.ha_required, pytest.mark.usefixtures("enable_custom_integrations")]
 
 
-async def test_sensors_created(hass: HomeAssistant, mock_client: MagicMock, mock_config_entry) -> None:
+async def test_sensors_created(
+    hass: HomeAssistant, mock_client: MagicMock, mock_config_entry
+) -> None:
     """All expected sensors are created on setup."""
-    with patch(
-        "custom_components.eaux_marseille.EauxDeMarseilleClient",
-        return_value=mock_client,
-    ), patch(
-        "custom_components.eaux_marseille.coordinator.EauxDeMarseilleCoordinator._async_update_data",
-        return_value=MOCK_CONSUMPTION,
-    ), patch(
-        "custom_components.eaux_marseille.async_import_historical_statistics",
+    with (
+        patch(
+            "custom_components.eaux_marseille.EauxDeMarseilleClient",
+            return_value=mock_client,
+        ),
+        patch(
+            "custom_components.eaux_marseille.coordinator.EauxDeMarseilleCoordinator._async_update_data",
+            return_value=MOCK_CONSUMPTION,
+        ),
+        patch(
+            "custom_components.eaux_marseille.async_import_historical_statistics",
+        ),
     ):
         await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
@@ -53,16 +58,22 @@ async def test_sensors_created(hass: HomeAssistant, mock_client: MagicMock, mock
     assert expected_keys == created_keys
 
 
-async def test_sensor_values(hass: HomeAssistant, mock_client: MagicMock, mock_config_entry) -> None:
+async def test_sensor_values(
+    hass: HomeAssistant, mock_client: MagicMock, mock_config_entry
+) -> None:
     """Sensor states reflect the consumption data."""
-    with patch(
-        "custom_components.eaux_marseille.EauxDeMarseilleClient",
-        return_value=mock_client,
-    ), patch(
-        "custom_components.eaux_marseille.coordinator.EauxDeMarseilleCoordinator._async_update_data",
-        return_value=MOCK_CONSUMPTION,
-    ), patch(
-        "custom_components.eaux_marseille.async_import_historical_statistics",
+    with (
+        patch(
+            "custom_components.eaux_marseille.EauxDeMarseilleClient",
+            return_value=mock_client,
+        ),
+        patch(
+            "custom_components.eaux_marseille.coordinator.EauxDeMarseilleCoordinator._async_update_data",
+            return_value=MOCK_CONSUMPTION,
+        ),
+        patch(
+            "custom_components.eaux_marseille.async_import_historical_statistics",
+        ),
     ):
         await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
@@ -83,7 +94,9 @@ async def test_sensor_values(hass: HomeAssistant, mock_client: MagicMock, mock_c
     assert float(state.state) == 193.0
 
     # Find the total_readings entity
-    readings_entity = next(e for e in entries if e.unique_id == f"{MOCK_CONTRACT_ID}_total_readings")
+    readings_entity = next(
+        e for e in entries if e.unique_id == f"{MOCK_CONTRACT_ID}_total_readings"
+    )
     state = hass.states.get(readings_entity.entity_id)
     assert state is not None
     assert int(float(state.state)) == 10

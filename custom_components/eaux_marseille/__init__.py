@@ -31,9 +31,7 @@ class EauxDeMarseilleData:
 type EauxDeMarseilleConfigEntry = ConfigEntry[EauxDeMarseilleData]
 
 
-async def async_setup_entry(
-    hass: HomeAssistant, entry: EauxDeMarseilleConfigEntry
-) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: EauxDeMarseilleConfigEntry) -> bool:
     """Set up Eaux de Marseille from a config entry."""
     client = EauxDeMarseilleClient(
         login=entry.data[CONF_USERNAME],
@@ -50,11 +48,9 @@ async def async_setup_entry(
 
     async def _run_import(_event: Event | None = None) -> None:
         try:
-            await async_import_historical_statistics(
-                hass, client, entry.data[CONF_CONTRACT_ID]
-            )
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.exception("Failed to import historical statistics: %s", err)
+            await async_import_historical_statistics(hass, client, entry.data[CONF_CONTRACT_ID])
+        except Exception:
+            _LOGGER.exception("Failed to import historical statistics")
 
     if hass.is_running:
         hass.async_create_task(_run_import())
@@ -64,11 +60,9 @@ async def async_setup_entry(
     return True
 
 
-async def async_unload_entry(
-    hass: HomeAssistant, entry: EauxDeMarseilleConfigEntry
-) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: EauxDeMarseilleConfigEntry) -> bool:
     """Unload a config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unload_ok: bool = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         await entry.runtime_data.client.close()
     return unload_ok

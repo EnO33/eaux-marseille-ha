@@ -12,12 +12,12 @@ import pytest
 from aioresponses import aioresponses
 
 from custom_components.eaux_marseille.api import (
+    _API_BASE,
+    _PORTAL_URL,
     ConsumptionData,
     EauxDeMarseilleApiError,
     EauxDeMarseilleAuthError,
     EauxDeMarseilleClient,
-    _API_BASE,
-    _PORTAL_URL,
 )
 
 CONTRACT_ID = "1234567"
@@ -95,9 +95,7 @@ class TestAuthentication:
         """Authentication succeeds with valid responses."""
         await client.authenticate()
 
-    async def test_authenticate_token_failure(
-        self, client: EauxDeMarseilleClient
-    ) -> None:
+    async def test_authenticate_token_failure(self, client: EauxDeMarseilleClient) -> None:
         """Authentication raises on token generation failure."""
         with aioresponses() as m:
             m.get(_PORTAL_URL + "/", body="<html></html>")
@@ -108,9 +106,7 @@ class TestAuthentication:
             with pytest.raises(EauxDeMarseilleAuthError, match="Token generation failed"):
                 await client.authenticate()
 
-    async def test_authenticate_login_failure(
-        self, client: EauxDeMarseilleClient
-    ) -> None:
+    async def test_authenticate_login_failure(self, client: EauxDeMarseilleClient) -> None:
         """Authentication raises on bad credentials."""
         with aioresponses() as m:
             m.get(_PORTAL_URL + "/", body="<html></html>")
@@ -126,9 +122,7 @@ class TestAuthentication:
             with pytest.raises(EauxDeMarseilleAuthError, match="Login failed"):
                 await client.authenticate()
 
-    async def test_authenticate_follows_307_redirect(
-        self, client: EauxDeMarseilleClient
-    ) -> None:
+    async def test_authenticate_follows_307_redirect(self, client: EauxDeMarseilleClient) -> None:
         """Authentication follows a 307 redirect on the login POST and preserves the body."""
         redirected_url = f"{_API_BASE}/Utilisateur/authentification/v2"
         with aioresponses() as m:
@@ -181,9 +175,7 @@ class TestAuthentication:
                 body="redirect without location",
             )
 
-            with pytest.raises(
-                EauxDeMarseilleAuthError, match="no Location header"
-            ):
+            with pytest.raises(EauxDeMarseilleAuthError, match="no Location header"):
                 await client.authenticate()
 
     async def test_authenticate_rejects_cross_origin_redirect(
@@ -205,9 +197,7 @@ class TestAuthentication:
                 headers={"Location": "https://attacker.example/steal"},
             )
 
-            with pytest.raises(
-                EauxDeMarseilleAuthError, match="off-portal host"
-            ):
+            with pytest.raises(EauxDeMarseilleAuthError, match="off-portal host"):
                 await client.authenticate()
 
     async def test_authenticate_rejects_protocol_relative_redirect(
@@ -226,9 +216,7 @@ class TestAuthentication:
                 headers={"Location": "//attacker.example/steal"},
             )
 
-            with pytest.raises(
-                EauxDeMarseilleAuthError, match="off-portal host"
-            ):
+            with pytest.raises(EauxDeMarseilleAuthError, match="off-portal host"):
                 await client.authenticate()
 
     async def test_authenticate_rejects_https_to_http_downgrade(
@@ -247,21 +235,15 @@ class TestAuthentication:
                 headers={"Location": "http://espaceclients.eauxdemarseille.fr/x"},
             )
 
-            with pytest.raises(
-                EauxDeMarseilleAuthError, match="non-HTTPS scheme"
-            ):
+            with pytest.raises(EauxDeMarseilleAuthError, match="non-HTTPS scheme"):
                 await client.authenticate()
 
-    async def test_authenticate_landing_page_failure(
-        self, client: EauxDeMarseilleClient
-    ) -> None:
+    async def test_authenticate_landing_page_failure(self, client: EauxDeMarseilleClient) -> None:
         """A 4xx/5xx on the landing page is reported with a clear message."""
         with aioresponses() as m:
             m.get(_PORTAL_URL + "/", status=503, body="maintenance")
 
-            with pytest.raises(
-                EauxDeMarseilleApiError, match="HTTP 503 on landing page"
-            ):
+            with pytest.raises(EauxDeMarseilleApiError, match="HTTP 503 on landing page"):
                 await client.authenticate()
 
     async def test_authenticate_landing_page_network_error(
@@ -271,9 +253,7 @@ class TestAuthentication:
         with aioresponses() as m:
             m.get(_PORTAL_URL + "/", exception=aiohttp.ClientConnectionError("DNS"))
 
-            with pytest.raises(
-                EauxDeMarseilleApiError, match="Failed to reach portal"
-            ):
+            with pytest.raises(EauxDeMarseilleApiError, match="Failed to reach portal"):
                 await client.authenticate()
 
     async def test_authenticate_token_response_missing_field(
@@ -287,9 +267,7 @@ class TestAuthentication:
                 payload={"unexpected": "shape"},
             )
 
-            with pytest.raises(
-                EauxDeMarseilleAuthError, match="unexpected response"
-            ):
+            with pytest.raises(EauxDeMarseilleAuthError, match="unexpected response"):
                 await client.authenticate()
 
     async def test_authenticate_login_response_missing_field(
@@ -326,17 +304,13 @@ class TestRedirects:
                 m.post(
                     f"{_API_BASE}/Acces/generateToken" + ("" if i == 0 else f"/h{i}"),
                     status=307,
-                    headers={
-                        "Location": f"{_API_BASE}/Acces/generateToken/h{i + 1}"
-                    },
+                    headers={"Location": f"{_API_BASE}/Acces/generateToken/h{i + 1}"},
                 )
 
             with pytest.raises(EauxDeMarseilleAuthError, match="Too many redirects"):
                 await client.authenticate()
 
-    async def test_post_to_get_redirect_drops_body(
-        self, client: EauxDeMarseilleClient
-    ) -> None:
+    async def test_post_to_get_redirect_drops_body(self, client: EauxDeMarseilleClient) -> None:
         """A 303 redirect on a POST converts the next hop to GET and drops body."""
         target = f"{_API_BASE}/Acces/generateToken/v2"
         with aioresponses() as m:
@@ -367,9 +341,7 @@ class TestRedirects:
 class TestJSONErrors:
     """Responses that do not look like the expected JSON shape."""
 
-    async def test_html_response_surfaces_clear_error(
-        self, client: EauxDeMarseilleClient
-    ) -> None:
+    async def test_html_response_surfaces_clear_error(self, client: EauxDeMarseilleClient) -> None:
         """A 200 with HTML body (e.g. WAF challenge) is reported with the body excerpt."""
         with aioresponses() as m:
             m.get(_PORTAL_URL + "/", body="<html></html>")
@@ -478,9 +450,7 @@ class TestFetchMonthlyRange:
 class TestRetry:
     """Test retry behavior on transient errors."""
 
-    async def test_retry_on_server_error(
-        self, client: EauxDeMarseilleClient
-    ) -> None:
+    async def test_retry_on_server_error(self, client: EauxDeMarseilleClient) -> None:
         """5xx errors trigger a retry that eventually succeeds."""
         with aioresponses() as m:
             m.get(_PORTAL_URL + "/", body="<html></html>")

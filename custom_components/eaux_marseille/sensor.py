@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -141,12 +141,12 @@ async def async_setup_entry(
     contract_id: str = entry.data[CONF_CONTRACT_ID]
 
     async_add_entities(
-        EauxDeMarseilleeSensor(coordinator, description, contract_id)
+        EauxDeMarseilleSensor(coordinator, description, contract_id)
         for description in SENSOR_DESCRIPTIONS
     )
 
 
-class EauxDeMarseilleeSensor(CoordinatorEntity[EauxDeMarseilleCoordinator], SensorEntity):
+class EauxDeMarseilleSensor(CoordinatorEntity[EauxDeMarseilleCoordinator], SensorEntity):
     """Representation of an Eaux de Marseille sensor."""
 
     entity_description: EauxDeMarseilleEntityDescription

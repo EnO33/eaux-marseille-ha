@@ -6,12 +6,10 @@ These tests require a full Home Assistant environment and only run in CI.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+from datetime import UTC, datetime
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
-
-from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
 from homeassistant.core import HomeAssistant
 
 from custom_components.eaux_marseille.const import DOMAIN
@@ -71,7 +69,10 @@ async def test_import_creates_statistics(
     await async_import_historical_statistics(hass, mock_client, MOCK_CONTRACT_ID)
 
     mock_add_external_stats.assert_called_once()
-    metadata, stats = mock_add_external_stats.call_args.args[1], mock_add_external_stats.call_args.args[2]
+    metadata, stats = (
+        mock_add_external_stats.call_args.args[1],
+        mock_add_external_stats.call_args.args[2],
+    )
 
     assert metadata["source"] == DOMAIN
     assert metadata["statistic_id"] == f"{DOMAIN}:monthly_consumption_{MOCK_CONTRACT_ID}"
@@ -94,14 +95,12 @@ async def test_import_skips_existing(
     mock_add_external_stats,
 ) -> None:
     """Import skips entries older than the last imported timestamp."""
-    last_ts = datetime(2024, 8, 15, tzinfo=timezone.utc).timestamp()
+    last_ts = datetime(2024, 8, 15, tzinfo=UTC).timestamp()
     statistic_id = f"{DOMAIN}:monthly_consumption_{MOCK_CONTRACT_ID}"
 
     with patch(
         "custom_components.eaux_marseille.statistics.get_last_statistics",
-        return_value={
-            statistic_id: [{"start": last_ts, "sum": 7.5}]
-        },
+        return_value={statistic_id: [{"start": last_ts, "sum": 7.5}]},
     ):
         mock_client.fetch_monthly_range.side_effect = [MOCK_MONTHLY_ENTRIES, [], []]
         await async_import_historical_statistics(hass, mock_client, MOCK_CONTRACT_ID)

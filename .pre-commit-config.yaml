@@ -1,0 +1,41 @@
+# Pre-commit hooks for the Eaux de Marseille integration.
+#
+# Install:   pip install pre-commit && pre-commit install
+# Run on demand: pre-commit run --all-files
+#
+# These hooks run automatically before each commit and re-run the same
+# checks as the GitHub Actions CI, so issues are caught locally before
+# they ever reach a PR.
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.13.0
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        files: ^custom_components/eaux_marseille/
+        # Mypy needs the same dependency surface CI installs in order to
+        # type-check our HA-flavoured code.
+        additional_dependencies:
+          - aiohttp>=3.9
+          - aioresponses>=0.7
+          - homeassistant
+          - pytest-homeassistant-custom-component
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: debug-statements
+      - id: mixed-line-ending
+        args: [--fix=lf]

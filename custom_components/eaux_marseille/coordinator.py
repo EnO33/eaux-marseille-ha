@@ -9,7 +9,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import ConsumptionData, EauxDeMarseilleApiError, EauxDeMarseilleAuthError, EauxDeMarseilleClient
+from .api import (
+    ConsumptionData,
+    EauxDeMarseilleApiError,
+    EauxDeMarseilleAuthError,
+    EauxDeMarseilleClient,
+)
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)

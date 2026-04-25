@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import urllib.parse
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import aiohttp
@@ -129,15 +129,14 @@ class EauxDeMarseilleClient:
             f"/TableauDeBord/derniereConsommationFacturee/{self._contract_id}"
         )
         monthly = await self._get(self._monthly_path_for_year(_current_utc_year()))
-        history = await self._get(
-            f"/Facturation/listeConsommationsFacturees/{self._contract_id}"
-        )
+        history = await self._get(f"/Facturation/listeConsommationsFacturees/{self._contract_id}")
         return ConsumptionData.from_api_responses(last_billed, monthly, history)
 
     async def fetch_monthly_range(self, year: int) -> list[dict[str, Any]]:
         """Return the raw monthly consumption entries for ``year``."""
         data = await self._get(self._monthly_path_for_year(year))
-        return data.get("consommations", [])
+        entries: list[dict[str, Any]] = data.get("consommations", [])
+        return entries
 
     # ------------------------------------------------------------------
     # Internal helpers — authentication
@@ -156,7 +155,8 @@ class EauxDeMarseilleClient:
                 await response.read()
                 _LOGGER.debug(
                     "Portal landing page: HTTP %d (final URL: %s)",
-                    response.status, response.url,
+                    response.status,
+                    response.url,
                 )
                 if response.status >= 400:
                     raise EauxDeMarseilleApiError(
@@ -164,9 +164,7 @@ class EauxDeMarseilleClient:
                         f"page (final URL: {response.url})"
                     )
         except (aiohttp.ClientError, TimeoutError) as err:
-            raise EauxDeMarseilleApiError(
-                f"Failed to reach portal: {err}"
-            ) from err
+            raise EauxDeMarseilleApiError(f"Failed to reach portal: {err}") from err
 
     async def _generate_token(self) -> str:
         """Exchange the static app credentials for a short-lived token."""
@@ -186,10 +184,9 @@ class EauxDeMarseilleClient:
         except EauxDeMarseilleApiError as err:
             raise EauxDeMarseilleAuthError(f"Token generation failed: {err}") from err
         if not data or "token" not in data:
-            raise EauxDeMarseilleAuthError(
-                "Token generation returned unexpected response"
-            )
-        return data["token"]
+            raise EauxDeMarseilleAuthError("Token generation returned unexpected response")
+        token: str = data["token"]
+        return token
 
     async def _login_user(self, temp_token: str) -> tuple[str, dict[str, Any]]:
         """Exchange user credentials for the long-lived AEL session token."""
@@ -203,10 +200,7 @@ class EauxDeMarseilleClient:
         except EauxDeMarseilleApiError as err:
             raise EauxDeMarseilleAuthError(f"Login failed: {err}") from err
         if not data or "tokenAuthentique" not in data:
-            keys = (
-                sorted(data.keys()) if isinstance(data, dict)
-                else type(data).__name__
-            )
+            keys = sorted(data.keys()) if isinstance(data, dict) else type(data).__name__
             raise EauxDeMarseilleAuthError(
                 f"Login returned unexpected response (missing 'tokenAuthentique'); "
                 f"got fields: {keys}"
@@ -216,7 +210,8 @@ class EauxDeMarseilleClient:
         user_info: dict[str, Any] = data["utilisateurInfo"]
         self._token = ael_token
         self._session.cookie_jar.update_cookies(
-            {"aelToken": ael_token}, response_url=URL(PORTAL_URL),
+            {"aelToken": ael_token},
+            response_url=URL(PORTAL_URL),
         )
         return ael_token, user_info
 
@@ -236,9 +231,7 @@ class EauxDeMarseilleClient:
             "object": contract,
             "user": {
                 "identifiant": user_info["identifiant"],
-                "nomComplet": (
-                    f"{user_info.get('prenom', '')} {user_info.get('nom', '')}"
-                ),
+                "nomComplet": (f"{user_info.get('prenom', '')} {user_info.get('nom', '')}"),
                 "nom": user_info.get("nom", ""),
                 "prenom": user_info.get("prenom", ""),
                 "email": user_info.get("email", ""),
@@ -251,7 +244,8 @@ class EauxDeMarseilleClient:
         }
         encoded = urllib.parse.quote_plus(str(context).replace("'", '"'))
         self._session.cookie_jar.update_cookies(
-            {"AEL_CONTEXT": encoded}, response_url=URL(PORTAL_URL),
+            {"AEL_CONTEXT": encoded},
+            response_url=URL(PORTAL_URL),
         )
 
     # ------------------------------------------------------------------
@@ -260,8 +254,8 @@ class EauxDeMarseilleClient:
 
     def _monthly_path_for_year(self, year: int) -> str:
         """Build the monthly consumption endpoint path for ``year``."""
-        start = int(datetime(year, 1, 1, tzinfo=timezone.utc).timestamp())
-        end = int(datetime(year, 12, 31, 23, 59, 59, tzinfo=timezone.utc).timestamp())
+        start = int(datetime(year, 1, 1, tzinfo=UTC).timestamp())
+        end = int(datetime(year, 12, 31, 23, 59, 59, tzinfo=UTC).timestamp())
         return (
             f"/Consommation/listeConsommationsInstanceAlerteChart/"
             f"{self._contract_id}/{start}/{end}/MOIS/true"
@@ -286,11 +280,15 @@ class EauxDeMarseilleClient:
         if extra_headers:
             headers.update(extra_headers)
         return await _http.request_with_retry(
-            self._session, method, url,
-            timeout=self._timeout, headers=headers, **kwargs,
+            self._session,
+            method,
+            url,
+            timeout=self._timeout,
+            headers=headers,
+            **kwargs,
         )
 
 
 def _current_utc_year() -> int:
     """Return the current UTC year. Extracted for monkey-patching in tests."""
-    return datetime.now(timezone.utc).year
+    return datetime.now(UTC).year

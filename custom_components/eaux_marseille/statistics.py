@@ -7,7 +7,7 @@ using the internal statistics API. Called once on initial setup.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
@@ -54,7 +54,7 @@ async def async_import_historical_statistics(
         last_ts: float = existing[statistic_id][0]["start"] if existing.get(statistic_id) else 0.0
         _LOGGER.debug("Last imported timestamp: %s", last_ts)
 
-        current_year = datetime.now(timezone.utc).year
+        current_year = datetime.now(UTC).year
         stats: list[StatisticData] = []
         running_sum = 0.0
 
@@ -67,7 +67,7 @@ async def async_import_historical_statistics(
             try:
                 entries = await client.fetch_monthly_range(year)
                 _LOGGER.debug("Year %d: fetched %d entries", year, len(entries))
-            except Exception as err:  # noqa: BLE001
+            except Exception as err:
                 _LOGGER.warning("Could not fetch history for %d: %s", year, err)
                 continue
 
@@ -77,7 +77,7 @@ async def async_import_historical_statistics(
                 if not date_str or value is None:
                     continue
 
-                dt = datetime.fromisoformat(date_str).astimezone(timezone.utc)
+                dt = datetime.fromisoformat(date_str).astimezone(UTC)
                 # Align to the start of the hour (required by HA recorder).
                 dt = dt.replace(minute=0, second=0, microsecond=0)
 
@@ -112,9 +112,11 @@ async def async_import_historical_statistics(
 
         _LOGGER.info(
             "Imported %d monthly statistics for contract %s (total sum: %s m³)",
-            len(stats), contract_id, running_sum,
+            len(stats),
+            contract_id,
+            running_sum,
         )
 
-    except Exception as err:
-        _LOGGER.exception("Error during historical statistics import: %s", err)
+    except Exception:
+        _LOGGER.exception("Error during historical statistics import")
         raise

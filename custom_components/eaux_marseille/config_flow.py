@@ -7,7 +7,6 @@ from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 
@@ -31,27 +30,23 @@ STEP_REAUTH_DATA_SCHEMA = vol.Schema(
 )
 
 
-async def _validate_credentials(
-    username: str, password: str, contract_id: str
-) -> str | None:
+async def _validate_credentials(username: str, password: str, contract_id: str) -> str | None:
     """Authenticate against the portal.
 
     Returns:
         ``None`` on success, or one of ``"invalid_auth"`` / ``"cannot_connect"``
         as an error key compatible with HA's config-flow error reporting.
     """
-    client = EauxDeMarseilleClient(
-        login=username, password=password, contract_id=contract_id
-    )
+    client = EauxDeMarseilleClient(login=username, password=password, contract_id=contract_id)
     try:
         await client.authenticate()
     except EauxDeMarseilleAuthError as err:
         _LOGGER.warning("Authentication failed: %s", err)
         return "invalid_auth"
-    except EauxDeMarseilleApiError as err:
-        _LOGGER.error("API error during setup: %s", err)
+    except EauxDeMarseilleApiError:
+        _LOGGER.exception("API error during setup")
         return "cannot_connect"
-    except Exception:  # noqa: BLE001
+    except Exception:
         _LOGGER.exception("Unexpected error during authentication")
         return "cannot_connect"
     finally:
@@ -59,7 +54,7 @@ async def _validate_credentials(
     return None
 
 
-class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):
+class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
     """Handle the configuration flow for Eaux de Marseille."""
 
     VERSION = 1
@@ -70,9 +65,7 @@ class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):
     # User flow (initial setup)
     # ------------------------------------------------------------------
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -101,20 +94,21 @@ class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):
     # Reauthentication flow (triggered by ConfigEntryAuthFailed)
     # ------------------------------------------------------------------
 
-    async def async_step_reauth(
-        self, entry_data: Mapping[str, Any]
-    ) -> ConfigFlowResult:
+    async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> ConfigFlowResult:
         """Start the reauth flow for an existing entry."""
-        self._reauth_entry = self.hass.config_entries.async_get_entry(
-            self.context["entry_id"]
-        )
+        self._reauth_entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Ask the user to re-enter the portal password."""
-        assert self._reauth_entry is not None
+        if self._reauth_entry is None:
+            # Defensive: HA always sets the entry_id in self.context before
+            # calling async_step_reauth, so this branch is unreachable in
+            # practice. We surface a clear error instead of using assert
+            # (which gets stripped under python -O).
+            raise RuntimeError("Reauth flow started without an entry context")
         errors: dict[str, str] = {}
 
         if user_input is not None:
