@@ -72,7 +72,7 @@ indent-style = "space"
 # ---------------------------------------------------------------------
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 strict = true
 warn_unreachable = true
 warn_unused_ignores = true
