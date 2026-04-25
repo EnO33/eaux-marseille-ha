@@ -35,6 +35,12 @@ _ACCESS_KEY = "XX_ma2DD-2017-GSEM-PRD!"
 _MAX_RETRIES = 3
 _BACKOFF_BASE = 1.0  # seconds, doubled each attempt (1s, 2s, 4s)
 
+# Maximum number of HTTP redirects we follow manually for a single request.
+# We follow redirects ourselves (instead of relying on aiohttp's default) so
+# that POST bodies are preserved on 307/308 and so we can log the Location
+# header — which is critical for diagnosing portal-side routing changes.
+_MAX_REDIRECTS = 5
+
 _DEFAULT_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -199,48 +205,93 @@ class EauxDeMarseilleClient:
         last_error: Exception | None = None
         for attempt in range(_MAX_RETRIES):
             try:
-                async with self._session.request(
-                    method, url, headers=headers, timeout=self._timeout, **kwargs
-                ) as response:
-                    content_type = response.headers.get("Content-Type", "<none>")
-                    _LOGGER.debug(
-                        "%s %s → HTTP %d (content-type=%s)",
-                        method, url, response.status, content_type,
-                    )
+                current_method = method
+                current_url = url
+                for redirect_hop in range(_MAX_REDIRECTS + 1):
+                    request_kwargs = dict(kwargs)
+                    # On 303 (See Other) the redirected request must become a
+                    # GET without a body; on 301/302 we follow the historical
+                    # browser convention of also dropping the body. 307/308
+                    # preserve method and body, which is what the portal needs
+                    # for its auth POST.
+                    if redirect_hop > 0 and current_method == "GET":
+                        request_kwargs.pop("json", None)
+                        request_kwargs.pop("data", None)
 
-                    # 4xx: client error, don't retry
-                    if 400 <= response.status < 500:
-                        text = await response.text()
-                        raise EauxDeMarseilleApiError(
-                            f"HTTP {response.status} at {url}: {text[:200]}"
+                    async with self._session.request(
+                        current_method,
+                        current_url,
+                        headers=headers,
+                        timeout=self._timeout,
+                        allow_redirects=False,
+                        **request_kwargs,
+                    ) as response:
+                        content_type = response.headers.get("Content-Type", "<none>")
+                        _LOGGER.debug(
+                            "%s %s → HTTP %d (content-type=%s)",
+                            current_method, current_url, response.status, content_type,
                         )
-                    # 5xx: server error, will retry
-                    if response.status >= 500:
-                        text = await response.text()
-                        raise aiohttp.ClientResponseError(
-                            response.request_info,
-                            response.history,
-                            status=response.status,
-                            message=text[:200],
-                        )
-                    if not expect_json:
-                        return None
 
-                    # Parse JSON with clear error if the body isn't JSON.
-                    # The portal sometimes returns HTML (login redirect, WAF block,
-                    # CDN error page) with a 200 status — detect and report this.
-                    try:
-                        return await response.json(content_type=None)
-                    except (
-                        json.JSONDecodeError,
-                        aiohttp.ContentTypeError,
-                    ) as err:
-                        body = await response.text()
-                        raise EauxDeMarseilleApiError(
-                            f"Expected JSON from {url} but got "
-                            f"content-type={content_type}, status={response.status}. "
-                            f"Body starts with: {body[:200]!r}"
-                        ) from err
+                        # 3xx: follow redirect manually so we preserve the POST
+                        # body on 307/308 and so we can log the Location header.
+                        if 300 <= response.status < 400:
+                            location = response.headers.get("Location")
+                            if not location:
+                                body = await response.text()
+                                raise EauxDeMarseilleApiError(
+                                    f"HTTP {response.status} at {current_url} "
+                                    f"with no Location header. "
+                                    f"Body starts with: {body[:200]!r}"
+                                )
+                            next_url = str(URL(current_url).join(URL(location)))
+                            _LOGGER.info(
+                                "Following HTTP %d redirect: %s → %s",
+                                response.status, current_url, next_url,
+                            )
+                            if redirect_hop >= _MAX_REDIRECTS:
+                                raise EauxDeMarseilleApiError(
+                                    f"Too many redirects ({_MAX_REDIRECTS}) "
+                                    f"starting from {url}; last hop: {next_url}"
+                                )
+                            if response.status in (301, 302, 303) and current_method == "POST":
+                                current_method = "GET"
+                            current_url = next_url
+                            continue
+
+                        # 4xx: client error, don't retry
+                        if 400 <= response.status < 500:
+                            text = await response.text()
+                            raise EauxDeMarseilleApiError(
+                                f"HTTP {response.status} at {current_url}: {text[:200]}"
+                            )
+                        # 5xx: server error, will retry
+                        if response.status >= 500:
+                            text = await response.text()
+                            raise aiohttp.ClientResponseError(
+                                response.request_info,
+                                response.history,
+                                status=response.status,
+                                message=text[:200],
+                            )
+                        if not expect_json:
+                            return None
+
+                        # Parse JSON with clear error if the body isn't JSON.
+                        # The portal sometimes returns HTML (login redirect, WAF block,
+                        # CDN error page) with a 200 status — detect and report this.
+                        try:
+                            return await response.json(content_type=None)
+                        except (
+                            json.JSONDecodeError,
+                            aiohttp.ContentTypeError,
+                        ) as err:
+                            body = await response.text()
+                            raise EauxDeMarseilleApiError(
+                                f"Expected JSON from {current_url} but got "
+                                f"content-type={content_type}, status={response.status}. "
+                                f"Body starts with: {body[:200]!r}"
+                            ) from err
+                    break
             except (asyncio.TimeoutError, aiohttp.ClientError) as err:
                 last_error = err
                 if attempt < _MAX_RETRIES - 1:
@@ -308,7 +359,11 @@ class EauxDeMarseilleClient:
         except EauxDeMarseilleApiError as err:
             raise EauxDeMarseilleAuthError(f"Login failed: {err}") from err
         if not data or "tokenAuthentique" not in data:
-            raise EauxDeMarseilleAuthError("Login returned unexpected response")
+            keys = sorted(data.keys()) if isinstance(data, dict) else type(data).__name__
+            raise EauxDeMarseilleAuthError(
+                f"Login returned unexpected response (missing 'tokenAuthentique'); "
+                f"got fields: {keys}"
+            )
         ael_token: str = data["tokenAuthentique"]
         user_info: dict = data["utilisateurInfo"]
         self._token = ael_token
