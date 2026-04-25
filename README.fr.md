@@ -71,13 +71,24 @@ Une **statistique externe mensuelle** est également importée sous l'identifian
 
 1. Dans Home Assistant, allez dans **Paramètres → Appareils et services → ➕ Ajouter une intégration**
 2. Cherchez **Eaux de Marseille**
-3. Renseignez :
-   - **Email** — l'adresse utilisée pour vous connecter au portail
-   - **Mot de passe** — le même que sur le portail
-   - **Numéro de contrat** — visible sur vos factures et dans l'URL du portail (ex : `7464349`)
+3. Remplissez le formulaire (voir [paramètres](#parametres-de-configuration) ci-dessous)
 4. Validez
 
 L'intégration vérifie les identifiants, puis crée l'appareil et ses capteurs. Au premier lancement, les statistiques mensuelles historiques disponibles sont également importées (en arrière-plan, quelques secondes).
+
+### Paramètres de configuration
+
+| Champ | Obligatoire | Format | Description | Où le trouver |
+|---|---|---|---|---|
+| **Email** | Oui | Adresse e-mail | Email de connexion au portail | L'adresse utilisée sur [espaceclients.eauxdemarseille.fr](https://espaceclients.eauxdemarseille.fr) |
+| **Mot de passe** | Oui | Chaîne | Mot de passe du portail | Identique au site. Stocké chiffré au repos par Home Assistant. |
+| **Numéro de contrat** | Oui | Numérique (typiquement 7 chiffres) | Identifiant de votre contrat | Visible sur vos factures sous « Numéro de contrat » et dans l'URL du portail après connexion (`https://espaceclients.eauxdemarseille.fr/#/dashboard/<contrat>`) |
+
+Le numéro de contrat sert également d'identifiant unique pour l'entrée de configuration — vous ne pouvez pas ajouter deux fois le même contrat.
+
+### Réauthentification
+
+Si vous changez votre mot de passe du portail, Home Assistant détectera l'échec d'authentification au prochain cycle de polling (≤ 1 heure) et affichera une notification. Cliquez dessus pour saisir le nouveau mot de passe — l'intégration conserve le contrat, les capteurs et les statistiques historiques.
 
 ### Plusieurs contrats
 

@@ -22,6 +22,10 @@ from .api import ConsumptionData
 from .const import CONF_CONTRACT_ID, DOMAIN
 from .coordinator import EauxDeMarseilleCoordinator
 
+# All sensors share a single coordinator that already serialises requests,
+# so HA does not need to add an extra concurrency cap on top.
+PARALLEL_UPDATES = 0
+
 
 @dataclass(frozen=True, kw_only=True)
 class EauxDeMarseilleEntityDescription(SensorEntityDescription):

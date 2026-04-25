@@ -71,13 +71,24 @@ A **monthly external statistic** is also imported under the ID `eaux_marseille:m
 
 1. In Home Assistant, go to **Settings → Devices & Services → ➕ Add Integration**
 2. Search for **Eaux de Marseille**
-3. Fill in:
-   - **Email** — the address you use to log in to the portal
-   - **Password** — the same password as the portal
-   - **Contract number** — visible on your bills and in the portal URL (e.g. `7464349`)
+3. Fill the form (see [parameters](#configuration-parameters) below)
 4. Submit
 
 The integration will validate the credentials, then expose the device and its sensors. The first run also imports the available historical monthly statistics (this happens in the background and may take a few seconds).
+
+### Configuration parameters
+
+| Field | Required | Format | Description | Where to find it |
+|---|---|---|---|---|
+| **Email** | Yes | Email address | Login email for the portal | The address you use on [espaceclients.eauxdemarseille.fr](https://espaceclients.eauxdemarseille.fr) |
+| **Password** | Yes | String | Portal password | Same as the website. Stored encrypted at rest by Home Assistant. |
+| **Contract number** | Yes | Numeric (typically 7 digits) | Your contract identifier | Visible on your water bills under "Numéro de contrat" and in the portal URL after login (`https://espaceclients.eauxdemarseille.fr/#/dashboard/<contract>`) |
+
+The contract number also acts as the unique identifier for the integration entry — you cannot add the same contract twice.
+
+### Reauthentication
+
+If you change your portal password, Home Assistant will detect the failed authentication on the next polling cycle (≤ 1 hour) and show a notification. Click it to re-enter the new password — the integration keeps the contract, sensors, and historical statistics intact.
 
 ### Multiple contracts
 
