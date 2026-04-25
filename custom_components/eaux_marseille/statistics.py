@@ -9,7 +9,10 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
-from homeassistant.components.recorder import get_instance
+# `get_instance` is the documented public helper but isn't re-exported
+# in __all__ on the recorder package, so mypy flags the import. Silence
+# the false positive without losing strict mode globally.
+from homeassistant.components.recorder import get_instance  # type: ignore[attr-defined]
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
 from homeassistant.components.recorder.statistics import (
     async_add_external_statistics,
@@ -99,7 +102,11 @@ async def async_import_historical_statistics(
             _LOGGER.debug("No new historical statistics to import for contract %s", contract_id)
             return
 
-        metadata = StatisticMetaData(
+        # mean_type / unit_class were added to StatisticMetaData in newer
+        # HA versions but remain optional at runtime. Skipping them keeps
+        # us compatible with both old and new releases; mypy in strict
+        # mode flags the missing keys, hence the targeted ignore.
+        metadata = StatisticMetaData(  # type: ignore[typeddict-item]
             has_mean=False,
             has_sum=True,
             name=f"Eaux de Marseille {contract_id} — Monthly consumption",

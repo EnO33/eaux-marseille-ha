@@ -75,7 +75,10 @@ indent-style = "space"
 python_version = "3.13"
 strict = true
 warn_unreachable = true
-warn_unused_ignores = true
+# Some `# type: ignore` comments target false positives that only appear
+# when HA is actually installed (CI). Locally (Windows, HA stubbed) they
+# look unused; that's expected and not a real problem.
+warn_unused_ignores = false
 disallow_untyped_decorators = false  # HA decorators aren't always typed
 # HA / aiohttp / yarl don't ship type stubs in the form mypy expects,
 # so subclassing or returning their values gets typed as ``Any``. That's
