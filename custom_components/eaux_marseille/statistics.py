@@ -1,17 +1,18 @@
 """Historical statistics importer for Eaux de Marseille.
 
 Backfills monthly water consumption into the Home Assistant recorder
-using the internal statistics API. Called once on initial setup.
+using the external-statistics API. Safe to call multiple times — months
+that are already present are skipped.
 """
 
 from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from typing import Any
 
 # `get_instance` is the documented public helper but isn't re-exported
-# in __all__ on the recorder package, so mypy flags the import. Silence
-# the false positive without losing strict mode globally.
+# in __all__ on the recorder package, so mypy flags the import.
 from homeassistant.components.recorder import get_instance  # type: ignore[attr-defined]
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
 from homeassistant.components.recorder.statistics import (
@@ -34,96 +35,130 @@ async def async_import_historical_statistics(
     client: EauxDeMarseilleClient,
     contract_id: str,
 ) -> None:
-    """
-    Import all available monthly statistics into the HA recorder.
-
-    Skips months that are already present to avoid duplicates.
-    Safe to call multiple times.
-    """
+    """Import the available monthly statistics into the HA recorder."""
     try:
-        # Wait for the recorder to be fully ready before accessing statistics.
-        # Without this, the import can fail when the integration loads early
-        # during HA startup (typical with HACS integrations).
+        # Recorder may not be ready yet at HACS startup time.
         instance = get_instance(hass)
         await instance.async_db_ready
 
-        _LOGGER.debug("Starting historical statistics import for contract %s", contract_id)
-
         statistic_id = f"{DOMAIN}:monthly_consumption_{contract_id}"
+        last_ts, running_sum = await _load_last_imported(hass, statistic_id)
 
-        existing = await instance.async_add_executor_job(
-            get_last_statistics, hass, 1, statistic_id, True, {"sum"}
+        _LOGGER.debug(
+            "Starting historical statistics import for contract %s (last_ts=%s)",
+            contract_id,
+            last_ts,
         )
-        last_ts: float = existing[statistic_id][0]["start"] if existing.get(statistic_id) else 0.0
-        _LOGGER.debug("Last imported timestamp: %s", last_ts)
 
-        current_year = datetime.now(UTC).year
-        stats: list[StatisticData] = []
-        running_sum = 0.0
-
-        # If we already have data, retrieve the last sum to continue from there.
-        if last_ts > 0 and existing.get(statistic_id):
-            last_entry = existing[statistic_id][0]
-            running_sum = last_entry.get("sum") or 0.0
-
-        for year in range(_START_YEAR, current_year + 1):
-            try:
-                entries = await client.fetch_monthly_range(year)
-                _LOGGER.debug("Year %d: fetched %d entries", year, len(entries))
-            except Exception as err:
-                _LOGGER.warning("Could not fetch history for %d: %s", year, err)
-                continue
-
-            for entry in entries:
-                date_str: str = entry.get("dateReleve", "")
-                value: float | None = entry.get("volumeConsoEnM3")
-                if not date_str or value is None:
-                    continue
-
-                dt = datetime.fromisoformat(date_str).astimezone(UTC)
-                # Align to the start of the hour (required by HA recorder).
-                dt = dt.replace(minute=0, second=0, microsecond=0)
-
-                if dt.timestamp() <= last_ts:
-                    continue
-
-                consumption = round(float(value), 3)
-                running_sum = round(running_sum + consumption, 3)
-
-                stats.append(
-                    StatisticData(
-                        start=dt,
-                        state=consumption,
-                        sum=running_sum,
-                    )
-                )
-
+        stats = await _collect_new_stats(client, last_ts, running_sum)
         if not stats:
-            _LOGGER.debug("No new historical statistics to import for contract %s", contract_id)
+            _LOGGER.debug(
+                "No new historical statistics to import for contract %s",
+                contract_id,
+            )
             return
 
-        # mean_type / unit_class were added to StatisticMetaData in newer
-        # HA versions but remain optional at runtime. Skipping them keeps
-        # us compatible with both old and new releases; mypy in strict
-        # mode flags the missing keys, hence the targeted ignore.
-        metadata = StatisticMetaData(  # type: ignore[typeddict-item]
-            has_mean=False,
-            has_sum=True,
-            name=f"Eaux de Marseille {contract_id} — Monthly consumption",
-            source=DOMAIN,
-            statistic_id=statistic_id,
-            unit_of_measurement=UnitOfVolume.CUBIC_METERS,
-        )
-
-        async_add_external_statistics(hass, metadata, stats)
-
+        async_add_external_statistics(hass, _build_metadata(contract_id, statistic_id), stats)
         _LOGGER.info(
             "Imported %d monthly statistics for contract %s (total sum: %s m³)",
             len(stats),
             contract_id,
-            running_sum,
+            stats[-1]["sum"],
         )
-
     except Exception:
         _LOGGER.exception("Error during historical statistics import")
         raise
+
+
+async def _load_last_imported(
+    hass: HomeAssistant,
+    statistic_id: str,
+) -> tuple[float, float]:
+    """Return the timestamp and running sum of the latest stored stat."""
+    instance = get_instance(hass)
+    existing = await instance.async_add_executor_job(
+        get_last_statistics,
+        hass,
+        1,
+        statistic_id,
+        True,
+        {"sum"},
+    )
+    if not existing.get(statistic_id):
+        return 0.0, 0.0
+    last_entry = existing[statistic_id][0]
+    return float(last_entry["start"]), float(last_entry.get("sum") or 0.0)
+
+
+async def _collect_new_stats(
+    client: EauxDeMarseilleClient,
+    last_ts: float,
+    running_sum: float,
+) -> list[StatisticData]:
+    """Fetch and convert all months newer than ``last_ts``."""
+    stats: list[StatisticData] = []
+    current_year = datetime.now(UTC).year
+
+    for year in range(_START_YEAR, current_year + 1):
+        try:
+            entries = await client.fetch_monthly_range(year)
+        except Exception as err:
+            _LOGGER.warning("Could not fetch history for %d: %s", year, err)
+            continue
+        _LOGGER.debug("Year %d: fetched %d entries", year, len(entries))
+
+        for entry in entries:
+            stat = _entry_to_stat(entry, last_ts, running_sum)
+            if stat is None:
+                continue
+            running_sum = stat["sum"]
+            stats.append(stat)
+
+    return stats
+
+
+def _entry_to_stat(
+    entry: dict[str, Any],
+    last_ts: float,
+    running_sum: float,
+) -> StatisticData | None:
+    """Convert a portal entry to :class:`StatisticData`, or skip it."""
+    date_str = entry.get("dateReleve", "")
+    value = entry.get("volumeConsoEnM3")
+    if not date_str or value is None:
+        return None
+
+    # Recorder requires timestamps aligned to the hour.
+    dt = (
+        datetime.fromisoformat(date_str)
+        .astimezone(UTC)
+        .replace(
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+    )
+    if dt.timestamp() <= last_ts:
+        return None
+
+    consumption = round(float(value), 3)
+    return StatisticData(
+        start=dt,
+        state=consumption,
+        sum=round(running_sum + consumption, 3),
+    )
+
+
+def _build_metadata(contract_id: str, statistic_id: str) -> StatisticMetaData:
+    """Build the recorder metadata for the monthly-consumption statistic."""
+    # mean_type / unit_class were added to StatisticMetaData in newer
+    # HA versions but remain optional at runtime; skipping them keeps
+    # the integration compatible with older releases.
+    return StatisticMetaData(  # type: ignore[typeddict-item]
+        has_mean=False,
+        has_sum=True,
+        name=f"Eaux de Marseille {contract_id} — Monthly consumption",
+        source=DOMAIN,
+        statistic_id=statistic_id,
+        unit_of_measurement=UnitOfVolume.CUBIC_METERS,
+    )

@@ -52,6 +52,10 @@ ignore = [
     # ASYNC109 suggestion to use `asyncio.timeout()` does not apply.
     "ASYNC109",
 ]
+"custom_components/eaux_marseille/_auth.py" = [
+    # Same reason as _http.py: timeout is a ClientTimeout config object.
+    "ASYNC109",
+]
 "tests/*" = [
     "S101",     # asserts are normal in tests
     "PLR2004",  # magic numbers are normal in tests

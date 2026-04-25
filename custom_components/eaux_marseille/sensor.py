@@ -1,134 +1,25 @@
-"""Sensor platform for Eaux de Marseille."""
+"""Sensor platform for Eaux de Marseille.
+
+Entity descriptions live in :mod:`._sensor_descriptions`; this module
+only contains the platform plumbing (entity class + setup hook).
+"""
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass
-
-from homeassistant.components.sensor import (
-    SensorDeviceClass,
-    SensorEntity,
-    SensorEntityDescription,
-    SensorStateClass,
-)
-from homeassistant.const import UnitOfVolume
+from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import EauxDeMarseilleConfigEntry
-from .api import ConsumptionData
+from ._sensor_descriptions import SENSOR_DESCRIPTIONS, EauxDeMarseilleEntityDescription
 from .const import CONF_CONTRACT_ID, DOMAIN
 from .coordinator import EauxDeMarseilleCoordinator
 
 # All sensors share a single coordinator that already serialises requests,
 # so HA does not need to add an extra concurrency cap on top.
 PARALLEL_UPDATES = 0
-
-
-@dataclass(frozen=True, kw_only=True)
-class EauxDeMarseilleEntityDescription(SensorEntityDescription):
-    """Describes an Eaux de Marseille sensor."""
-
-    value_fn: Callable[[ConsumptionData], float | int | str | None]
-
-
-SENSOR_DESCRIPTIONS: tuple[EauxDeMarseilleEntityDescription, ...] = (
-    EauxDeMarseilleEntityDescription(
-        key="current_month_m3",
-        translation_key="current_month_m3",
-        native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
-        device_class=SensorDeviceClass.WATER,
-        state_class=SensorStateClass.TOTAL,
-        suggested_display_precision=3,
-        value_fn=lambda d: d.current_month_m3,
-    ),
-    EauxDeMarseilleEntityDescription(
-        key="current_month_litres",
-        translation_key="current_month_litres",
-        native_unit_of_measurement=UnitOfVolume.LITERS,
-        device_class=SensorDeviceClass.WATER,
-        state_class=SensorStateClass.TOTAL,
-        suggested_display_precision=0,
-        value_fn=lambda d: d.current_month_litres,
-    ),
-    EauxDeMarseilleEntityDescription(
-        key="current_year_m3",
-        translation_key="current_year_m3",
-        native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
-        device_class=SensorDeviceClass.WATER,
-        state_class=SensorStateClass.TOTAL,
-        suggested_display_precision=3,
-        value_fn=lambda d: d.current_year_m3,
-    ),
-    EauxDeMarseilleEntityDescription(
-        key="index_m3",
-        translation_key="index_m3",
-        native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
-        device_class=SensorDeviceClass.WATER,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-        suggested_display_precision=0,
-        value_fn=lambda d: d.index_m3,
-    ),
-    EauxDeMarseilleEntityDescription(
-        key="daily_average_m3",
-        translation_key="daily_average_m3",
-        native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
-        suggested_display_precision=4,
-        value_fn=lambda d: d.daily_average_m3,
-    ),
-    EauxDeMarseilleEntityDescription(
-        key="last_reading_m3",
-        translation_key="last_reading_m3",
-        native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
-        device_class=SensorDeviceClass.WATER,
-        state_class=SensorStateClass.TOTAL,
-        suggested_display_precision=0,
-        value_fn=lambda d: d.last_reading_m3,
-    ),
-    EauxDeMarseilleEntityDescription(
-        key="last_reading_litres",
-        translation_key="last_reading_litres",
-        native_unit_of_measurement=UnitOfVolume.LITERS,
-        device_class=SensorDeviceClass.WATER,
-        state_class=SensorStateClass.TOTAL,
-        suggested_display_precision=0,
-        value_fn=lambda d: d.last_reading_litres,
-    ),
-    EauxDeMarseilleEntityDescription(
-        key="last_reading_date",
-        translation_key="last_reading_date",
-        value_fn=lambda d: d.last_reading_date,
-    ),
-    EauxDeMarseilleEntityDescription(
-        key="last_reading_days",
-        translation_key="last_reading_days",
-        native_unit_of_measurement="days",
-        state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda d: d.last_reading_days,
-    ),
-    EauxDeMarseilleEntityDescription(
-        key="previous_reading_m3",
-        translation_key="previous_reading_m3",
-        native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
-        device_class=SensorDeviceClass.WATER,
-        state_class=SensorStateClass.TOTAL,
-        suggested_display_precision=0,
-        value_fn=lambda d: d.previous_reading_m3,
-    ),
-    EauxDeMarseilleEntityDescription(
-        key="previous_reading_date",
-        translation_key="previous_reading_date",
-        value_fn=lambda d: d.previous_reading_date,
-    ),
-    EauxDeMarseilleEntityDescription(
-        key="total_readings",
-        translation_key="total_readings",
-        state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda d: d.total_readings,
-    ),
-)
 
 
 async def async_setup_entry(
@@ -139,7 +30,6 @@ async def async_setup_entry(
     """Set up Eaux de Marseille sensors from a config entry."""
     coordinator = entry.runtime_data.coordinator
     contract_id: str = entry.data[CONF_CONTRACT_ID]
-
     async_add_entities(
         EauxDeMarseilleSensor(coordinator, description, contract_id)
         for description in SENSOR_DESCRIPTIONS

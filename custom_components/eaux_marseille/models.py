@@ -1,13 +1,15 @@
 """Data models for the Eaux de Marseille API.
 
-Pure data + a single ``classmethod`` that turns the three portal API
-responses into a :class:`ConsumptionData` value. Keeping the parsing
-in a classmethod (instead of inside the HTTP client) makes it trivially
-testable without any HTTP mocking.
+Pure data + a few module-level helpers (:meth:`ConsumptionData.from_api_responses`
+and :func:`encode_context_cookie`) that turn the portal's payloads into
+the integration's internal representation. Keeping these as
+classmethods/free functions (instead of inside the HTTP client) makes
+them trivially testable without any HTTP mocking.
 """
 
 from __future__ import annotations
 
+import urllib.parse
 from dataclasses import dataclass
 from typing import Any
 
@@ -83,3 +85,32 @@ class ConsumptionData:
 def _iso_date_prefix(value: str | None) -> str | None:
     """Return the ``YYYY-MM-DD`` prefix of an ISO datetime, or ``None``."""
     return value[:10] if value else None
+
+
+def encode_context_cookie(
+    contract: dict[str, Any],
+    user_info: dict[str, Any],
+    ael_token: str,
+) -> str:
+    """Build the value of the portal's ``AEL_CONTEXT`` cookie.
+
+    The portal's JS bundle stores a JSON-like blob (with double quotes
+    instead of Python's repr single quotes), URL-encoded.
+    """
+    context = {
+        "type": "contrat",
+        "object": contract,
+        "user": {
+            "identifiant": user_info["identifiant"],
+            "nomComplet": f"{user_info.get('prenom', '')} {user_info.get('nom', '')}",
+            "nom": user_info.get("nom", ""),
+            "prenom": user_info.get("prenom", ""),
+            "email": user_info.get("email", ""),
+            "titre": user_info.get("titre", ""),
+            "tokenAuthentique": ael_token,
+            "userWebId": user_info.get("userWebId"),
+            "meta": user_info.get("meta", {}),
+            "profils": user_info.get("profils", []),
+        },
+    }
+    return urllib.parse.quote_plus(str(context).replace("'", '"'))

@@ -267,7 +267,7 @@ class TestAuthentication:
                 payload={"unexpected": "shape"},
             )
 
-            with pytest.raises(EauxDeMarseilleAuthError, match="unexpected response"):
+            with pytest.raises(EauxDeMarseilleAuthError, match="missing 'token'"):
                 await client.authenticate()
 
     async def test_authenticate_login_response_missing_field(
