@@ -11,6 +11,13 @@ build/
 venv/
 *.egg
 
+# Test coverage
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.pytest_cache/
+
 # Editors
 .vscode/
 .idea/
