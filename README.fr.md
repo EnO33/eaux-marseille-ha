@@ -3,6 +3,7 @@
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Release](https://img.shields.io/github/v/release/EnO33/eaux-marseille-ha)](https://github.com/EnO33/eaux-marseille-ha/releases)
 [![Tests](https://github.com/EnO33/eaux-marseille-ha/actions/workflows/tests.yml/badge.svg)](https://github.com/EnO33/eaux-marseille-ha/actions/workflows/tests.yml)
+[![Niveau de qualité : silver](https://img.shields.io/badge/quality--scale-silver-silver.svg)](https://developers.home-assistant.io/docs/core/integration-quality-scale)
 [![Licence : MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 🇬🇧 [Read in English](README.md)
@@ -17,12 +18,14 @@ L'intégration récupère votre consommation d'eau depuis le portail toutes les 
 
 ## Fonctionnalités
 
-- 🔧 Configuration via l'interface Home Assistant — pas de YAML
-- 💧 12 capteurs par contrat (consommation, index compteur, moyenne journalière, périodes de facturation)
-- 📈 Import des statistiques mensuelles historiques depuis 2024 — compatible avec le tableau de bord Énergie de HA
-- 🔁 Rafraîchissement automatique toutes les heures avec retry/backoff sur erreurs transitoires
-- 🛡️ Sécurisé : redirections cross-origin refusées (protection contre les fuites de type CVE-2018-18074)
-- 🇫🇷 🇬🇧 Traductions française et anglaise
+- Configuration via l'interface Home Assistant — pas de YAML
+- 12 capteurs par contrat (consommation, index compteur, moyenne journalière, périodes de facturation)
+- Import des statistiques mensuelles historiques depuis 2024 — compatible avec le tableau de bord Énergie de HA
+- Rafraîchissement automatique toutes les heures avec retry/backoff sur erreurs transitoires
+- Flux de réauthentification quand le mot de passe du portail change — plus besoin de supprimer/recréer l'intégration
+- Sécurisé : redirections cross-origin refusées (protection contre les fuites de type CVE-2018-18074)
+- Traductions française et anglaise
+- Niveau de qualité Home Assistant **Silver** (98 % de couverture de tests, toutes les règles requises remplies)
 
 ## Capteurs
 

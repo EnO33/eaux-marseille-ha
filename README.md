@@ -3,6 +3,7 @@
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Release](https://img.shields.io/github/v/release/EnO33/eaux-marseille-ha)](https://github.com/EnO33/eaux-marseille-ha/releases)
 [![Tests](https://github.com/EnO33/eaux-marseille-ha/actions/workflows/tests.yml/badge.svg)](https://github.com/EnO33/eaux-marseille-ha/actions/workflows/tests.yml)
+[![Quality scale: silver](https://img.shields.io/badge/quality--scale-silver-silver.svg)](https://developers.home-assistant.io/docs/core/integration-quality-scale)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 🇫🇷 [Lire en français](README.fr.md)
@@ -17,12 +18,14 @@ It pulls your water consumption from the portal every hour and exposes it as Hom
 
 ## Features
 
-- 🔧 UI-based configuration — no YAML editing
-- 💧 12 sensors per contract (consumption, meter index, daily average, billing periods)
-- 📈 Historical monthly statistics imported back to 2024 — works with the HA Energy dashboard
-- 🔁 Automatic hourly refresh with retry/backoff on transient errors
-- 🛡️ Secure: cross-origin redirects refused (CVE-2018-18074-class protection)
-- 🇫🇷 🇬🇧 French and English translations
+- UI-based configuration — no YAML editing
+- 12 sensors per contract (consumption, meter index, daily average, billing periods)
+- Historical monthly statistics imported back to 2024 — works with the HA Energy dashboard
+- Automatic hourly refresh with retry/backoff on transient errors
+- Reauthentication flow when the portal password changes — no need to delete and recreate the integration
+- Secure: cross-origin redirects refused (CVE-2018-18074-class protection)
+- French and English translations
+- Home Assistant **Silver** quality scale (98% test coverage, all required rules satisfied)
 
 ## Sensors
 
