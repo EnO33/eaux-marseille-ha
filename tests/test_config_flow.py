@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from homeassistant import config_entries
+from homeassistant.const import CONF_PASSWORD
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
@@ -100,3 +101,69 @@ async def test_user_flow_duplicate(
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "already_configured"
+
+
+# ----------------------------------------------------------------------
+# Reauthentication flow
+# ----------------------------------------------------------------------
+
+
+async def test_reauth_flow_success(
+    hass: HomeAssistant, mock_client: MagicMock, mock_config_entry
+) -> None:
+    """Reauth with valid credentials updates the entry password and reloads."""
+    with patch(
+        "custom_components.eaux_marseille.config_flow.EauxDeMarseilleClient",
+        return_value=mock_client,
+    ):
+        result = await mock_config_entry.start_reauth_flow(hass)
+        assert result["type"] is FlowResultType.FORM
+        assert result["step_id"] == "reauth_confirm"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input={CONF_PASSWORD: "new-password"}
+        )
+        await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    assert mock_config_entry.data[CONF_PASSWORD] == "new-password"
+
+
+async def test_reauth_flow_invalid_auth(
+    hass: HomeAssistant, mock_client: MagicMock, mock_config_entry
+) -> None:
+    """Reauth with bad credentials shows the form again with an error."""
+    mock_client.authenticate.side_effect = EauxDeMarseilleAuthError("still bad")
+
+    with patch(
+        "custom_components.eaux_marseille.config_flow.EauxDeMarseilleClient",
+        return_value=mock_client,
+    ):
+        result = await mock_config_entry.start_reauth_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input={CONF_PASSWORD: "wrong-password"}
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "reauth_confirm"
+    assert result["errors"] == {"base": "invalid_auth"}
+
+
+async def test_reauth_flow_cannot_connect(
+    hass: HomeAssistant, mock_client: MagicMock, mock_config_entry
+) -> None:
+    """Reauth handles connection errors during validation."""
+    mock_client.authenticate.side_effect = EauxDeMarseilleApiError("portal down")
+
+    with patch(
+        "custom_components.eaux_marseille.config_flow.EauxDeMarseilleClient",
+        return_value=mock_client,
+    ):
+        result = await mock_config_entry.start_reauth_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input={CONF_PASSWORD: "any"}
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "cannot_connect"}

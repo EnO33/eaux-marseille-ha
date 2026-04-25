@@ -9,6 +9,13 @@
           "password": "Password",
           "contract_id": "Contract number"
         }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate Eaux de Marseille",
+        "description": "The credentials for {username} are no longer valid. Please enter the portal password again.",
+        "data": {
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -16,7 +23,8 @@
       "cannot_connect": "Unable to connect to the portal. Try again later."
     },
     "abort": {
-      "already_configured": "This contract is already configured."
+      "already_configured": "This contract is already configured.",
+      "reauth_successful": "Re-authentication was successful."
     }
   },
   "entity": {

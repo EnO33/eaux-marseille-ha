@@ -9,6 +9,13 @@
           "password": "Mot de passe",
           "contract_id": "Numéro de contrat"
         }
+      },
+      "reauth_confirm": {
+        "title": "Réauthentification Eaux de Marseille",
+        "description": "Les identifiants pour {username} ne sont plus valides. Veuillez saisir à nouveau le mot de passe du portail.",
+        "data": {
+          "password": "Mot de passe"
+        }
       }
     },
     "error": {
@@ -16,7 +23,8 @@
       "cannot_connect": "Impossible de se connecter au portail. Réessayez plus tard."
     },
     "abort": {
-      "already_configured": "Ce contrat est déjà configuré."
+      "already_configured": "Ce contrat est déjà configuré.",
+      "reauth_successful": "La réauthentification a réussi."
     }
   },
   "entity": {

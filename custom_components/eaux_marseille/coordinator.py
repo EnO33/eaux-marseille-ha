@@ -6,6 +6,7 @@ import logging
 from datetime import timedelta
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import ConsumptionData, EauxDeMarseilleApiError, EauxDeMarseilleAuthError, EauxDeMarseilleClient
@@ -33,6 +34,8 @@ class EauxDeMarseilleCoordinator(DataUpdateCoordinator[ConsumptionData]):
             await self.client.authenticate()
             return await self.client.fetch()
         except EauxDeMarseilleAuthError as err:
-            raise UpdateFailed(f"Authentication error: {err}") from err
+            # Triggers Home Assistant's reauth flow so the user can re-enter
+            # their password without having to delete and recreate the entry.
+            raise ConfigEntryAuthFailed(f"Authentication error: {err}") from err
         except EauxDeMarseilleApiError as err:
             raise UpdateFailed(f"API error: {err}") from err
