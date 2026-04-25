@@ -2,7 +2,7 @@
   "domain": "eaux_marseille",
   "name": "Eaux de Marseille",
   "after_dependencies": ["recorder"],
-  "codeowners": [],
+  "codeowners": ["@EnO33"],
   "config_flow": true,
   "documentation": "https://github.com/EnO33/eaux-marseille-ha",
   "iot_class": "cloud_polling",
