@@ -186,6 +186,72 @@ class TestAuthentication:
             ):
                 await client.authenticate()
 
+    async def test_authenticate_rejects_cross_origin_redirect(
+        self, client: EauxDeMarseilleClient
+    ) -> None:
+        """Off-portal redirects must be refused (CVE-2018-18074-class leak)."""
+        with aioresponses() as m:
+            m.get(_PORTAL_URL + "/", body="<html></html>")
+            m.post(
+                f"{_API_BASE}/Acces/generateToken",
+                payload={"token": "fake-temp-token"},
+            )
+            # Attacker-controlled redirect to a foreign host. If followed,
+            # the auth POST body (containing the user's password) and the
+            # token header would be forwarded to the attacker.
+            m.post(
+                f"{_API_BASE}/Utilisateur/authentification",
+                status=307,
+                headers={"Location": "https://attacker.example/steal"},
+            )
+
+            with pytest.raises(
+                EauxDeMarseilleAuthError, match="off-portal host"
+            ):
+                await client.authenticate()
+
+    async def test_authenticate_rejects_protocol_relative_redirect(
+        self, client: EauxDeMarseilleClient
+    ) -> None:
+        """Protocol-relative redirects to foreign hosts must also be refused."""
+        with aioresponses() as m:
+            m.get(_PORTAL_URL + "/", body="<html></html>")
+            m.post(
+                f"{_API_BASE}/Acces/generateToken",
+                payload={"token": "fake-temp-token"},
+            )
+            m.post(
+                f"{_API_BASE}/Utilisateur/authentification",
+                status=307,
+                headers={"Location": "//attacker.example/steal"},
+            )
+
+            with pytest.raises(
+                EauxDeMarseilleAuthError, match="off-portal host"
+            ):
+                await client.authenticate()
+
+    async def test_authenticate_rejects_https_to_http_downgrade(
+        self, client: EauxDeMarseilleClient
+    ) -> None:
+        """HTTPS→HTTP scheme downgrade must be refused even on the same host."""
+        with aioresponses() as m:
+            m.get(_PORTAL_URL + "/", body="<html></html>")
+            m.post(
+                f"{_API_BASE}/Acces/generateToken",
+                payload={"token": "fake-temp-token"},
+            )
+            m.post(
+                f"{_API_BASE}/Utilisateur/authentification",
+                status=307,
+                headers={"Location": "http://espaceclients.eauxdemarseille.fr/x"},
+            )
+
+            with pytest.raises(
+                EauxDeMarseilleAuthError, match="non-HTTPS scheme"
+            ):
+                await client.authenticate()
+
 
 class TestFetch:
     """Test data fetching."""

@@ -243,7 +243,27 @@ class EauxDeMarseilleClient:
                                     f"with no Location header. "
                                     f"Body starts with: {body[:200]!r}"
                                 )
-                            next_url = str(URL(current_url).join(URL(location)))
+                            next_url_obj = URL(current_url).join(URL(location))
+                            next_url = str(next_url_obj)
+
+                            # Refuse off-portal redirects: forwarding the auth
+                            # token (or the credential body on 307/308) to a
+                            # third-party host would leak credentials.
+                            # See CVE-2018-18074 for the canonical form of this bug.
+                            if next_url_obj.host != _DOMAIN:
+                                raise EauxDeMarseilleApiError(
+                                    f"Refusing to follow {response.status} "
+                                    f"redirect to off-portal host "
+                                    f"{next_url_obj.host!r} (from {current_url})"
+                                )
+                            # Refuse https→http downgrade on the same host.
+                            if next_url_obj.scheme != "https":
+                                raise EauxDeMarseilleApiError(
+                                    f"Refusing to follow {response.status} "
+                                    f"redirect to non-HTTPS scheme "
+                                    f"{next_url_obj.scheme!r} (from {current_url})"
+                                )
+
                             _LOGGER.info(
                                 "Following HTTP %d redirect: %s → %s",
                                 response.status, current_url, next_url,
