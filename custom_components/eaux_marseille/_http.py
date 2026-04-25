@@ -1,7 +1,7 @@
 """Low-level HTTP transport for the Eaux de Marseille API client.
 
-* Retry with exponential backoff on transient errors (timeouts, network
-  errors, 5xx responses).
+* Retry with exponential backoff on transient errors — delegated to
+  :mod:`tenacity`.
 * Manual redirect handling (delegated to :mod:`._redirects`) so we can
   enforce same-origin, preserve POST bodies on 307/308, and log every
   ``Location`` we follow.
@@ -11,18 +11,27 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from typing import Any
 
 import aiohttp
+from tenacity import (
+    AsyncRetrying,
+    RetryError,
+    before_sleep_log,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from . import _redirects
 from .const import BACKOFF_BASE_S, MAX_REDIRECTS, MAX_RETRIES
 from .exceptions import EauxDeMarseilleApiError
 
 _LOGGER = logging.getLogger(__name__)
+
+_RETRY_ON = (TimeoutError, aiohttp.ClientError)
 
 
 async def request_with_retry(
@@ -36,36 +45,37 @@ async def request_with_retry(
 ) -> dict[str, Any]:
     """Send ``method url`` and return the parsed JSON body.
 
-    Retries up to :data:`MAX_RETRIES` times on transient failures.
-    Does not retry on 4xx responses — those are not transient.
+    Retries up to :data:`MAX_RETRIES` times with exponential backoff
+    (1s, 2s, 4s) on transient failures (timeouts, network errors, 5xx).
+    Does not retry on 4xx — those are not transient.
     """
-    last_error: Exception | None = None
-    for attempt in range(MAX_RETRIES):
-        try:
-            return await _send_following_redirects(
-                session,
-                method,
-                url,
-                timeout=timeout,
-                headers=headers,
-                **kwargs,
-            )
-        except (TimeoutError, aiohttp.ClientError) as err:
-            last_error = err
-            if attempt < MAX_RETRIES - 1:
-                delay = BACKOFF_BASE_S * (2**attempt)
-                _LOGGER.debug(
-                    "Request to %s failed (attempt %d/%d), retrying in %.1fs: %s",
+    try:
+        async for attempt in AsyncRetrying(
+            stop=stop_after_attempt(MAX_RETRIES),
+            wait=wait_exponential(multiplier=BACKOFF_BASE_S, max=8),
+            retry=retry_if_exception_type(_RETRY_ON),
+            before_sleep=before_sleep_log(_LOGGER, logging.DEBUG),
+            reraise=True,
+        ):
+            with attempt:
+                return await _send_following_redirects(
+                    session,
+                    method,
                     url,
-                    attempt + 1,
-                    MAX_RETRIES,
-                    delay,
-                    err,
+                    timeout=timeout,
+                    headers=headers,
+                    **kwargs,
                 )
-                await asyncio.sleep(delay)
-
-    raise EauxDeMarseilleApiError(
-        f"Request to {url} failed after {MAX_RETRIES} attempts: {last_error}"
+    except _RETRY_ON as err:
+        raise EauxDeMarseilleApiError(
+            f"Request to {url} failed after {MAX_RETRIES} attempts: {err}"
+        ) from err
+    except RetryError as err:  # pragma: no cover  # tenacity wraps if reraise=False
+        raise EauxDeMarseilleApiError(
+            f"Request to {url} failed after {MAX_RETRIES} attempts: {err}"
+        ) from err
+    raise EauxDeMarseilleApiError(  # pragma: no cover
+        f"Retry loop exited without a result for {url}"
     )
 
 
@@ -111,26 +121,27 @@ async def _send_following_redirects(
                 )
                 continue
 
-            if 400 <= response.status < 500:
-                text = await response.text()
-                raise EauxDeMarseilleApiError(f"HTTP {response.status} at {cur_url}: {text[:200]}")
-
-            if response.status >= 500:
-                # Raise as ClientResponseError so the outer retry loop
-                # treats it as transient.
-                text = await response.text()
-                raise aiohttp.ClientResponseError(
-                    response.request_info,
-                    response.history,
-                    status=response.status,
-                    message=text[:200],
-                )
-
+            await _raise_for_status(response, cur_url)
             return await _parse_json_or_raise(response, cur_url, ct)
 
     raise EauxDeMarseilleApiError(  # pragma: no cover
         f"Redirect loop guard failed for {url}"
     )
+
+
+async def _raise_for_status(response: aiohttp.ClientResponse, url: str) -> None:
+    """Raise on 4xx (no retry) or 5xx (re-raised as ClientResponseError so retry kicks in)."""
+    if 400 <= response.status < 500:
+        text = await response.text()
+        raise EauxDeMarseilleApiError(f"HTTP {response.status} at {url}: {text[:200]}")
+    if response.status >= 500:
+        text = await response.text()
+        raise aiohttp.ClientResponseError(
+            response.request_info,
+            response.history,
+            status=response.status,
+            message=text[:200],
+        )
 
 
 async def _parse_json_or_raise(
