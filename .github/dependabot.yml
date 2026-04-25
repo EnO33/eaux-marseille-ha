@@ -44,7 +44,9 @@ updates:
       - dependency-name: "pytest-homeassistant-custom-component"
         versions: [">=0.13.317"]
       # pytest-homeassistant-custom-component 0.13.316 depends on
-      # pytest==9.0.0 (strict equality), so we cannot bump pytest until
-      # we move past 0.13.316.
+      # pytest==9.0.0 and pytest-cov==7.0.0 (strict equality), so we
+      # cannot bump either until we move past 0.13.316.
       - dependency-name: "pytest"
         versions: [">9.0.0"]
+      - dependency-name: "pytest-cov"
+        versions: [">7.0.0"]
