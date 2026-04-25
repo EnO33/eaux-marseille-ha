@@ -27,9 +27,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest pytest-asyncio pytest-homeassistant-custom-component aioresponses
 
-      - name: Run tests
+      - name: Run tests with coverage
         run: |
-          python -m pytest tests/ -v --tb=short
+          python -m pytest tests/ -v --tb=short \
+            --cov=custom_components.eaux_marseille \
+            --cov-report=term-missing \
+            --cov-report=xml
 
   hassfest:
     name: Hassfest validation

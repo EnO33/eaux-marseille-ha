@@ -252,6 +252,139 @@ class TestAuthentication:
             ):
                 await client.authenticate()
 
+    async def test_authenticate_landing_page_failure(
+        self, client: EauxDeMarseilleClient
+    ) -> None:
+        """A 4xx/5xx on the landing page is reported with a clear message."""
+        with aioresponses() as m:
+            m.get(_PORTAL_URL + "/", status=503, body="maintenance")
+
+            with pytest.raises(
+                EauxDeMarseilleApiError, match="HTTP 503 on landing page"
+            ):
+                await client.authenticate()
+
+    async def test_authenticate_landing_page_network_error(
+        self, client: EauxDeMarseilleClient
+    ) -> None:
+        """A network error on the landing page is wrapped in EauxDeMarseilleApiError."""
+        with aioresponses() as m:
+            m.get(_PORTAL_URL + "/", exception=aiohttp.ClientConnectionError("DNS"))
+
+            with pytest.raises(
+                EauxDeMarseilleApiError, match="Failed to reach portal"
+            ):
+                await client.authenticate()
+
+    async def test_authenticate_token_response_missing_field(
+        self, client: EauxDeMarseilleClient
+    ) -> None:
+        """A 200 with no 'token' field surfaces a clear auth error."""
+        with aioresponses() as m:
+            m.get(_PORTAL_URL + "/", body="<html></html>")
+            m.post(
+                f"{_API_BASE}/Acces/generateToken",
+                payload={"unexpected": "shape"},
+            )
+
+            with pytest.raises(
+                EauxDeMarseilleAuthError, match="unexpected response"
+            ):
+                await client.authenticate()
+
+    async def test_authenticate_login_response_missing_field(
+        self, client: EauxDeMarseilleClient
+    ) -> None:
+        """A 200 login without 'tokenAuthentique' lists the actual fields received."""
+        with aioresponses() as m:
+            m.get(_PORTAL_URL + "/", body="<html></html>")
+            m.post(
+                f"{_API_BASE}/Acces/generateToken",
+                payload={"token": "fake-temp-token"},
+            )
+            m.post(
+                f"{_API_BASE}/Utilisateur/authentification",
+                payload={"errorCode": 42, "message": "service down"},
+            )
+
+            with pytest.raises(EauxDeMarseilleAuthError) as excinfo:
+                await client.authenticate()
+            # The error lists which keys we did get, to help diagnose API drift
+            assert "errorCode" in str(excinfo.value)
+            assert "message" in str(excinfo.value)
+
+
+class TestRedirects:
+    """Edge cases of the manual redirect handling."""
+
+    async def test_too_many_redirects(self, client: EauxDeMarseilleClient) -> None:
+        """Hitting _MAX_REDIRECTS surfaces a clear error mentioning the chain."""
+        with aioresponses() as m:
+            m.get(_PORTAL_URL + "/", body="<html></html>")
+            # 6 hops > _MAX_REDIRECTS (5)
+            for i in range(7):
+                m.post(
+                    f"{_API_BASE}/Acces/generateToken" + ("" if i == 0 else f"/h{i}"),
+                    status=307,
+                    headers={
+                        "Location": f"{_API_BASE}/Acces/generateToken/h{i + 1}"
+                    },
+                )
+
+            with pytest.raises(EauxDeMarseilleAuthError, match="Too many redirects"):
+                await client.authenticate()
+
+    async def test_post_to_get_redirect_drops_body(
+        self, client: EauxDeMarseilleClient
+    ) -> None:
+        """A 303 redirect on a POST converts the next hop to GET and drops body."""
+        target = f"{_API_BASE}/Acces/generateToken/v2"
+        with aioresponses() as m:
+            m.get(_PORTAL_URL + "/", body="<html></html>")
+            m.post(
+                f"{_API_BASE}/Acces/generateToken",
+                status=303,
+                headers={"Location": target},
+            )
+            # Note: aioresponses requires the redirected verb to be matched.
+            # After 303 the request must be GET.
+            m.get(target, payload={"token": "redirected-token"})
+            m.post(
+                f"{_API_BASE}/Utilisateur/authentification",
+                payload={
+                    "tokenAuthentique": "fake-ael-token",
+                    "utilisateurInfo": {"identifiant": "user@example.com"},
+                },
+            )
+            m.get(
+                f"{_API_BASE}/Abonnement/getContratParDefaut/",
+                payload={"numContrat": CONTRACT_ID},
+            )
+
+            await client.authenticate()
+
+
+class TestJSONErrors:
+    """Responses that do not look like the expected JSON shape."""
+
+    async def test_html_response_surfaces_clear_error(
+        self, client: EauxDeMarseilleClient
+    ) -> None:
+        """A 200 with HTML body (e.g. WAF challenge) is reported with the body excerpt."""
+        with aioresponses() as m:
+            m.get(_PORTAL_URL + "/", body="<html></html>")
+            m.post(
+                f"{_API_BASE}/Acces/generateToken",
+                body="<html><body>Cloudflare challenge</body></html>",
+                content_type="text/html",
+            )
+
+            with pytest.raises(EauxDeMarseilleAuthError) as excinfo:
+                await client.authenticate()
+            assert "Expected JSON" in str(excinfo.value) or "unexpected response" in str(
+                excinfo.value
+            )
+
 
 class TestFetch:
     """Test data fetching."""

@@ -187,14 +187,14 @@ class EauxDeMarseilleClient:
         method: str,
         url: str,
         *,
-        expect_json: bool = True,
         extra_headers: dict[str, str] | None = None,
         **kwargs: Any,
-    ) -> dict[str, Any] | None:
+    ) -> dict[str, Any]:
         """HTTP request with retry on transient errors.
 
         Retries on: network errors, timeouts, 5xx responses.
         Does NOT retry on 4xx responses (they're not transient).
+        Always parses the response as JSON.
         """
         headers = {**_DEFAULT_HEADERS, "ConversationId": _conversation_id()}
         if self._token:
@@ -293,9 +293,6 @@ class EauxDeMarseilleClient:
                                 status=response.status,
                                 message=text[:200],
                             )
-                        if not expect_json:
-                            return None
-
                         # Parse JSON with clear error if the body isn't JSON.
                         # The portal sometimes returns HTML (login redirect, WAF block,
                         # CDN error page) with a 200 status — detect and report this.
@@ -311,7 +308,6 @@ class EauxDeMarseilleClient:
                                 f"content-type={content_type}, status={response.status}. "
                                 f"Body starts with: {body[:200]!r}"
                             ) from err
-                    break
             except (asyncio.TimeoutError, aiohttp.ClientError) as err:
                 last_error = err
                 if attempt < _MAX_RETRIES - 1:
