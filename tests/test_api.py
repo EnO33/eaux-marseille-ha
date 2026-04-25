@@ -126,6 +126,66 @@ class TestAuthentication:
             with pytest.raises(EauxDeMarseilleAuthError, match="Login failed"):
                 await client.authenticate()
 
+    async def test_authenticate_follows_307_redirect(
+        self, client: EauxDeMarseilleClient
+    ) -> None:
+        """Authentication follows a 307 redirect on the login POST and preserves the body."""
+        redirected_url = f"{_API_BASE}/Utilisateur/authentification/v2"
+        with aioresponses() as m:
+            m.get(_PORTAL_URL + "/", body="<html></html>")
+            m.post(
+                f"{_API_BASE}/Acces/generateToken",
+                payload={"token": "fake-temp-token"},
+            )
+            m.post(
+                f"{_API_BASE}/Utilisateur/authentification",
+                status=307,
+                headers={"Location": redirected_url},
+            )
+            m.post(
+                redirected_url,
+                payload={
+                    "tokenAuthentique": "fake-ael-token",
+                    "utilisateurInfo": {
+                        "identifiant": "user@example.com",
+                        "nom": "Doe",
+                        "prenom": "John",
+                        "email": "user@example.com",
+                        "titre": "M.",
+                        "userWebId": 42,
+                        "meta": {},
+                        "profils": [],
+                    },
+                },
+            )
+            m.get(
+                f"{_API_BASE}/Abonnement/getContratParDefaut/",
+                payload={"numContrat": CONTRACT_ID},
+            )
+
+            await client.authenticate()
+
+    async def test_authenticate_redirect_without_location(
+        self, client: EauxDeMarseilleClient
+    ) -> None:
+        """A 3xx with no Location header surfaces as a clear API error."""
+        with aioresponses() as m:
+            m.get(_PORTAL_URL + "/", body="<html></html>")
+            m.post(
+                f"{_API_BASE}/Acces/generateToken",
+                payload={"token": "fake-temp-token"},
+            )
+            m.post(
+                f"{_API_BASE}/Utilisateur/authentification",
+                status=307,
+                body="redirect without location",
+            )
+
+            with pytest.raises(
+                EauxDeMarseilleAuthError, match="no Location header"
+            ):
+                await client.authenticate()
+
 
 class TestFetch:
     """Test data fetching."""
