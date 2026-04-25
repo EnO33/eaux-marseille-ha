@@ -14,7 +14,8 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: "3.14"
+          allow-prereleases: true
       - name: Install ruff
         run: python -m pip install ruff
       - name: Lint
@@ -29,7 +30,8 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: "3.14"
+          allow-prereleases: true
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -41,19 +43,19 @@ jobs:
   test:
     name: Pytest
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        # Aligned with the Python versions Home Assistant currently
-        # supports. HA 2026.x ships on Python 3.13 / 3.14.
-        python-version: ["3.13", "3.14"]
 
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python-version }}
+          # Aligned with the Python version Home Assistant currently ships
+          # (HA 2026.x runs on Python 3.14). Older versions used to be in
+          # the matrix but recent pytest-homeassistant-custom-component
+          # releases require 3.14, which makes a multi-version matrix
+          # impractical without diverging dependency pins.
+          python-version: "3.14"
           allow-prereleases: true
 
       - name: Install dependencies
