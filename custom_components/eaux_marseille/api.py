@@ -73,9 +73,17 @@ class EauxDeMarseilleClient:
         self._provider = provider
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._owns_session = session is None
+        # We deliberately use ThreadedResolver (socket.getaddrinfo via NSS)
+        # rather than aiohttp's default AsyncResolver (aiodns/c-ares). aiodns
+        # talks UDP/53 directly to the resolvers in /etc/resolv.conf, which
+        # fails on some HAOS/Docker setups where the OS resolves names fine
+        # via systemd-resolved, NSS or /etc/hosts but UDP to the upstream
+        # DNS is blocked or misconfigured. ThreadedResolver goes through the
+        # same path the rest of the OS uses and works in all of these cases.
         self._session = session or aiohttp.ClientSession(
             cookie_jar=aiohttp.CookieJar(unsafe=True),
             timeout=self._timeout,
+            connector=aiohttp.TCPConnector(resolver=aiohttp.ThreadedResolver()),
         )
         self._auth = PortalAuth(self._session, self._timeout, provider)
 

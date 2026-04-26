@@ -6,9 +6,11 @@ These tests mock HTTP calls and do not require Home Assistant.
 from __future__ import annotations
 
 import re
+import socket
 
 import aiohttp
 import pytest
+from aiohttp.client_reqrep import ConnectionKey
 from aioresponses import aioresponses
 
 from custom_components.eaux_marseille.api import (
@@ -254,6 +256,27 @@ class TestAuthentication:
             m.get(_PORTAL_URL + "/", exception=aiohttp.ClientConnectionError("DNS"))
 
             with pytest.raises(EauxDeMarseilleApiError, match="Failed to reach portal"):
+                await client.authenticate()
+
+    async def test_authenticate_landing_page_dns_failure(
+        self, client: EauxDeMarseilleClient
+    ) -> None:
+        """A DNS resolution failure surfaces a clear, actionable message."""
+        key = ConnectionKey(
+            host="espaceclients.eauxdemarseille.fr",
+            port=443,
+            is_ssl=True,
+            ssl=True,
+            proxy=None,
+            proxy_auth=None,
+            proxy_headers_hash=None,
+        )
+        dns_err = aiohttp.ClientConnectorDNSError(key, socket.gaierror("DNS"))
+
+        with aioresponses() as m:
+            m.get(_PORTAL_URL + "/", exception=dns_err)
+
+            with pytest.raises(EauxDeMarseilleApiError, match="DNS resolution failed"):
                 await client.authenticate()
 
     async def test_authenticate_token_response_missing_field(

@@ -42,6 +42,16 @@ def conversation_id() -> str:
     return f"JS-WEB-Netscape-{uuid.uuid4()}"
 
 
+def _is_dns_failure(err: BaseException) -> bool:
+    """Detect DNS resolution failures from the connector.
+
+    aiohttp normalises both ``AsyncResolver`` (aiodns/c-ares) and
+    ``ThreadedResolver`` (``socket.getaddrinfo``) failures into
+    :class:`aiohttp.ClientConnectorDNSError` (added in aiohttp 3.10).
+    """
+    return isinstance(err, aiohttp.ClientConnectorDNSError)
+
+
 class PortalAuth:
     """Stateful 5-step authentication flow against the SEM/SEMM portal."""
 
@@ -120,6 +130,13 @@ class PortalAuth:
                         f"(final URL: {response.url})"
                     )
         except (aiohttp.ClientError, TimeoutError) as err:
+            if _is_dns_failure(err):
+                raise EauxDeMarseilleApiError(
+                    f"DNS resolution failed for {self._endpoints.host}. "
+                    "Check Home Assistant's DNS configuration "
+                    "(Settings -> System -> Network -> Network adapter); "
+                    f"underlying error: {err}"
+                ) from err
             raise EauxDeMarseilleApiError(f"Failed to reach portal: {err}") from err
 
     async def _step_generate_token(self) -> str:
