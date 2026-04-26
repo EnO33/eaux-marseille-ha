@@ -1,4 +1,4 @@
-"""Authentication flow for the Eaux de Marseille customer portal.
+"""Authentication flow for the Eaux de Marseille / SEMM customer portals.
 
 The portal needs five steps to materialise a working session:
 
@@ -11,8 +11,8 @@ The portal needs five steps to materialise a working session:
 5. Plant the ``AEL_CONTEXT`` cookie that the portal expects on every
    subsequent call.
 
-Encapsulated as :class:`PortalAuth`: the session, timeout, and bearer
-token are kept on the instance, so each step is a tiny method.
+Encapsulated as :class:`PortalAuth`: the session, timeout, target portal
+and bearer token are kept on the instance, so each step is a tiny method.
 """
 
 from __future__ import annotations
@@ -26,11 +26,12 @@ from yarl import URL
 
 from . import _http
 from .const import (
-    API_BASE,
     APP_ACCESS_KEY,
     APP_CLIENT_ID,
-    DEFAULT_HEADERS,
-    PORTAL_URL,
+    PROVIDERS,
+    PortalEndpoints,
+    Provider,
+    headers_for,
 )
 from .exceptions import EauxDeMarseilleApiError, EauxDeMarseilleAuthError
 from .models import encode_context_cookie
@@ -44,15 +45,18 @@ def conversation_id() -> str:
 
 
 class PortalAuth:
-    """Stateful 5-step authentication flow against the SEM portal."""
+    """Stateful 5-step authentication flow against the SEM/SEMM portal."""
 
     def __init__(
         self,
         session: aiohttp.ClientSession,
         timeout: aiohttp.ClientTimeout,
+        provider: Provider,
     ) -> None:
         self._session = session
         self._timeout = timeout
+        self._endpoints: PortalEndpoints = PROVIDERS[provider]
+        self._base_headers = headers_for(self._endpoints)
         self.token: str | None = None
 
     # ------------------------------------------------------------------
@@ -83,13 +87,14 @@ class PortalAuth:
     # ------------------------------------------------------------------
 
     async def get(self, path: str) -> dict[str, Any]:
-        """Authenticated GET on a path under :data:`API_BASE`."""
+        """Authenticated GET on a path under the active portal's API base."""
         return await _http.request_with_retry(
             self._session,
             "GET",
-            f"{API_BASE}{path}",
+            f"{self._endpoints.api_base}{path}",
             timeout=self._timeout,
             headers=self._headers(),
+            allowed_host=self._endpoints.host,
         )
 
     # ------------------------------------------------------------------
@@ -100,8 +105,8 @@ class PortalAuth:
         self.token = None
         try:
             async with self._session.get(
-                f"{PORTAL_URL}/",
-                headers=DEFAULT_HEADERS,
+                f"{self._endpoints.url}/",
+                headers=self._base_headers,
                 timeout=self._timeout,
                 allow_redirects=True,
             ) as response:
@@ -176,7 +181,7 @@ class PortalAuth:
 
     def _headers(self, extra: dict[str, str] | None = None) -> dict[str, str]:
         """Build the standard request headers, with the bearer token if set."""
-        headers = {**DEFAULT_HEADERS, "ConversationId": conversation_id()}
+        headers = {**self._base_headers, "ConversationId": conversation_id()}
         if self.token:
             headers["token"] = self.token
         if extra:
@@ -184,7 +189,10 @@ class PortalAuth:
         return headers
 
     def _set_cookie(self, name: str, value: str) -> None:
-        self._session.cookie_jar.update_cookies({name: value}, response_url=URL(PORTAL_URL))
+        self._session.cookie_jar.update_cookies(
+            {name: value},
+            response_url=URL(self._endpoints.url),
+        )
 
     async def _auth_call(
         self,
@@ -201,9 +209,10 @@ class PortalAuth:
             data = await _http.request_with_retry(
                 self._session,
                 method,
-                f"{API_BASE}{path}",
+                f"{self._endpoints.api_base}{path}",
                 timeout=self._timeout,
                 headers=self._headers(extra_headers),
+                allowed_host=self._endpoints.host,
                 json=json_payload,
             )
         except EauxDeMarseilleApiError as err:

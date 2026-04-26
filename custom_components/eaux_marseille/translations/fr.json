@@ -3,11 +3,15 @@
     "step": {
       "user": {
         "title": "Eaux de Marseille",
-        "description": "Entrez vos identifiants espaceclients.eauxdemarseille.fr.",
+        "description": "Entrez vos identifiants du portail client.",
         "data": {
+          "provider": "Fournisseur d'eau",
           "username": "Adresse e-mail",
           "password": "Mot de passe",
           "contract_id": "Numéro de contrat"
+        },
+        "data_description": {
+          "provider": "Choisissez « SEM » si vous vous connectez sur espaceclients.eauxdemarseille.fr (Marseille intra-muros). Choisissez « SEMM » si vous vous connectez sur espaceclients.eaudemarseille-metropole.fr (Métropole Aix-Marseille-Provence)."
         }
       },
       "reauth_confirm": {

@@ -1,8 +1,8 @@
-"""High-level client for the Eaux de Marseille customer portal.
+"""High-level client for the Eaux de Marseille / SEMM customer portals.
 
 This module exposes :class:`EauxDeMarseilleClient`, an asynchronous
-client that authenticates against ``espaceclients.eauxdemarseille.fr``
-and fetches the per-contract consumption data.
+client that authenticates against the chosen provider's portal and
+fetches the per-contract consumption data.
 
 The auth flow lives in :mod:`._auth`, the HTTP transport in
 :mod:`._http`, the data shapes in :mod:`.models`, the constants in
@@ -17,7 +17,14 @@ from typing import Any
 import aiohttp
 
 from ._auth import PortalAuth
-from .const import API_BASE, PORTAL_URL, REQUEST_TIMEOUT_S
+from .const import (
+    API_BASE,
+    DEFAULT_PROVIDER,
+    PORTAL_URL,
+    PROVIDERS,
+    REQUEST_TIMEOUT_S,
+    Provider,
+)
 from .exceptions import (
     EauxDeMarseilleApiError,
     EauxDeMarseilleAuthError,
@@ -39,7 +46,7 @@ _API_BASE = API_BASE
 
 
 class EauxDeMarseilleClient:
-    """Async client for the Eaux de Marseille customer portal API.
+    """Async client for the Eaux de Marseille / SEMM customer portal API.
 
     Usage::
 
@@ -58,17 +65,19 @@ class EauxDeMarseilleClient:
         contract_id: str,
         session: aiohttp.ClientSession | None = None,
         timeout: int = REQUEST_TIMEOUT_S,
+        provider: Provider = DEFAULT_PROVIDER,
     ) -> None:
         self._login = login
         self._password = password
         self._contract_id = contract_id
+        self._provider = provider
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._owns_session = session is None
         self._session = session or aiohttp.ClientSession(
             cookie_jar=aiohttp.CookieJar(unsafe=True),
             timeout=self._timeout,
         )
-        self._auth = PortalAuth(self._session, self._timeout)
+        self._auth = PortalAuth(self._session, self._timeout, provider)
 
     async def close(self) -> None:
         """Close the underlying session if we own it."""
@@ -104,3 +113,7 @@ class EauxDeMarseilleClient:
             f"/Consommation/listeConsommationsInstanceAlerteChart/"
             f"{self._contract_id}/{start}/{end}/MOIS/true"
         )
+
+
+# Public re-exports for convenience.
+__all__ += ["PROVIDERS", "Provider"]

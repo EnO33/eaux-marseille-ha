@@ -3,11 +3,15 @@
     "step": {
       "user": {
         "title": "Eaux de Marseille",
-        "description": "Enter your espaceclients.eauxdemarseille.fr credentials.",
+        "description": "Enter your customer portal credentials.",
         "data": {
+          "provider": "Water utility",
           "username": "Email address",
           "password": "Password",
           "contract_id": "Contract number"
+        },
+        "data_description": {
+          "provider": "Choose 'SEM' if you log in on espaceclients.eauxdemarseille.fr (Marseille intra-muros). Choose 'SEMM' if you log in on espaceclients.eaudemarseille-metropole.fr (Aix-Marseille-Provence Métropole)."
         }
       },
       "reauth_confirm": {

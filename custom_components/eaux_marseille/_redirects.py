@@ -20,7 +20,7 @@ from typing import Any
 import aiohttp
 from yarl import URL
 
-from .const import MAX_REDIRECTS, PORTAL_HOST
+from .const import MAX_REDIRECTS
 from .exceptions import EauxDeMarseilleApiError
 
 _LOGGER = logging.getLogger(__name__)
@@ -33,14 +33,19 @@ async def resolve(
     *,
     hop: int,
     initial_url: str,
+    allowed_host: str,
 ) -> tuple[str, str]:
     """Validate a 3xx response and return ``(next_method, next_url)``.
+
+    ``allowed_host`` is the only host we accept as a redirect target —
+    forwarding the bearer token or the credential body to a different
+    origin is the CVE-2018-18074 leak we explicitly refuse.
 
     Raises :class:`EauxDeMarseilleApiError` if the redirect target is
     off-portal, downgrades scheme, has no ``Location`` header, or if
     we've exceeded :data:`MAX_REDIRECTS` hops.
     """
-    next_url = await _validated_target(response, url)
+    next_url = await _validated_target(response, url, allowed_host)
 
     _LOGGER.info(
         "Following HTTP %d redirect: %s → %s",
@@ -76,7 +81,11 @@ def drop_body_after_get_redirect(
     return pruned
 
 
-async def _validated_target(response: aiohttp.ClientResponse, url: str) -> str:
+async def _validated_target(
+    response: aiohttp.ClientResponse,
+    url: str,
+    allowed_host: str,
+) -> str:
     """Compute and validate the absolute target URL of a 3xx response."""
     location = response.headers.get("Location")
     if not location:
@@ -86,7 +95,7 @@ async def _validated_target(response: aiohttp.ClientResponse, url: str) -> str:
             f"Body starts with: {body[:200]!r}"
         )
     target = URL(url).join(URL(location))
-    if target.host != PORTAL_HOST:
+    if target.host != allowed_host:
         raise EauxDeMarseilleApiError(
             f"Refusing to follow {response.status} redirect to off-portal "
             f"host {target.host!r} (from {url})"

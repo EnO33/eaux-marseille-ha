@@ -11,12 +11,21 @@ from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResu
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 
 from .api import EauxDeMarseilleApiError, EauxDeMarseilleAuthError, EauxDeMarseilleClient
-from .const import CONF_CONTRACT_ID, DOMAIN
+from .const import CONF_CONTRACT_ID, CONF_PROVIDER, DEFAULT_PROVIDER, DOMAIN, Provider
 
 _LOGGER = logging.getLogger(__name__)
 
+# Display labels for each provider in the dropdown.
+_PROVIDER_LABELS = {
+    Provider.SEM: "Société des Eaux de Marseille (Marseille)",
+    Provider.SEMM: "Eau de Marseille Métropole (Aix-Marseille-Provence)",
+}
+
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
+        vol.Required(CONF_PROVIDER, default=DEFAULT_PROVIDER.value): vol.In(
+            {p.value: label for p, label in _PROVIDER_LABELS.items()}
+        ),
         vol.Required(CONF_USERNAME): str,
         vol.Required(CONF_PASSWORD): str,
         vol.Required(CONF_CONTRACT_ID): str,
@@ -30,14 +39,25 @@ STEP_REAUTH_DATA_SCHEMA = vol.Schema(
 )
 
 
-async def _validate_credentials(username: str, password: str, contract_id: str) -> str | None:
+async def _validate_credentials(
+    *,
+    username: str,
+    password: str,
+    contract_id: str,
+    provider: Provider,
+) -> str | None:
     """Authenticate against the portal.
 
     Returns:
         ``None`` on success, or one of ``"invalid_auth"`` / ``"cannot_connect"``
         as an error key compatible with HA's config-flow error reporting.
     """
-    client = EauxDeMarseilleClient(login=username, password=password, contract_id=contract_id)
+    client = EauxDeMarseilleClient(
+        login=username,
+        password=password,
+        contract_id=contract_id,
+        provider=provider,
+    )
     try:
         await client.authenticate()
     except EauxDeMarseilleAuthError as err:
@@ -69,13 +89,18 @@ class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            await self.async_set_unique_id(user_input[CONF_CONTRACT_ID])
+            provider = Provider(user_input[CONF_PROVIDER])
+            # Make the unique_id provider-aware so users can configure the
+            # same contract number on both portals (extremely unlikely but
+            # cheap to support).
+            await self.async_set_unique_id(f"{provider.value}_{user_input[CONF_CONTRACT_ID]}")
             self._abort_if_unique_id_configured()
 
             error = await _validate_credentials(
                 username=user_input[CONF_USERNAME],
                 password=user_input[CONF_PASSWORD],
                 contract_id=user_input[CONF_CONTRACT_ID],
+                provider=provider,
             )
             if error is None:
                 return self.async_create_entry(
@@ -116,6 +141,9 @@ class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call
                 username=self._reauth_entry.data[CONF_USERNAME],
                 password=user_input[CONF_PASSWORD],
                 contract_id=self._reauth_entry.data[CONF_CONTRACT_ID],
+                provider=Provider(
+                    self._reauth_entry.data.get(CONF_PROVIDER, DEFAULT_PROVIDER.value)
+                ),
             )
             if error is None:
                 return self.async_update_reload_and_abort(

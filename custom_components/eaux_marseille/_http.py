@@ -41,6 +41,7 @@ async def request_with_retry(
     *,
     timeout: aiohttp.ClientTimeout,
     headers: dict[str, str],
+    allowed_host: str,
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Send ``method url`` and return the parsed JSON body.
@@ -48,6 +49,9 @@ async def request_with_retry(
     Retries up to :data:`MAX_RETRIES` times with exponential backoff
     (1s, 2s, 4s) on transient failures (timeouts, network errors, 5xx).
     Does not retry on 4xx — those are not transient.
+
+    ``allowed_host`` bounds the redirect handler: requests are refused
+    if a 3xx points to any other host (CVE-2018-18074 protection).
     """
     try:
         async for attempt in AsyncRetrying(
@@ -64,6 +68,7 @@ async def request_with_retry(
                     url,
                     timeout=timeout,
                     headers=headers,
+                    allowed_host=allowed_host,
                     **kwargs,
                 )
     except _RETRY_ON as err:
@@ -86,6 +91,7 @@ async def _send_following_redirects(
     *,
     timeout: aiohttp.ClientTimeout,
     headers: dict[str, str],
+    allowed_host: str,
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Send a single request, walking through any redirect chain."""
@@ -118,6 +124,7 @@ async def _send_following_redirects(
                     cur_url,
                     hop=hop,
                     initial_url=url,
+                    allowed_host=allowed_host,
                 )
                 continue
 

@@ -10,7 +10,7 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, EVENT_HOMEASSISTAN
 from homeassistant.core import Event, HomeAssistant
 
 from .api import EauxDeMarseilleClient
-from .const import CONF_CONTRACT_ID
+from .const import CONF_CONTRACT_ID, CONF_PROVIDER, DEFAULT_PROVIDER, Provider
 from .coordinator import EauxDeMarseilleCoordinator
 from .statistics import async_import_historical_statistics
 
@@ -33,10 +33,13 @@ type EauxDeMarseilleConfigEntry = ConfigEntry[EauxDeMarseilleData]
 
 async def async_setup_entry(hass: HomeAssistant, entry: EauxDeMarseilleConfigEntry) -> bool:
     """Set up Eaux de Marseille from a config entry."""
+    # Entries created before 1.9.0 don't store the provider; default to SEM.
+    provider = Provider(entry.data.get(CONF_PROVIDER, DEFAULT_PROVIDER.value))
     client = EauxDeMarseilleClient(
         login=entry.data[CONF_USERNAME],
         password=entry.data[CONF_PASSWORD],
         contract_id=entry.data[CONF_CONTRACT_ID],
+        provider=provider,
     )
 
     coordinator = EauxDeMarseilleCoordinator(hass, client)
