@@ -11,7 +11,7 @@
           "contract_id": "Numéro de contrat"
         },
         "data_description": {
-          "provider": "Choisissez « SEM » si vous vous connectez sur espaceclients.eauxdemarseille.fr (Marseille intra-muros). Choisissez « SEMM » si vous vous connectez sur espaceclients.eaudemarseille-metropole.fr (Métropole Aix-Marseille-Provence)."
+          "provider": "Choisissez le fournisseur dont vous utilisez le portail client : SEM pour espaceclients.eauxdemarseille.fr (Ventabren, Bandol, Vitrolles, Trets et autres communes périphériques), SEMM pour espaceclients.eaudemarseille-metropole.fr (Marseille même, La Ciotat, Cassis, Marignane et alentour), ou Vivaigo pour espaceclients.vivaigo.fr (Salon, Berre, Lambesc, Eyguières et le pays salonais/berrois)."
         }
       },
       "reauth_confirm": {

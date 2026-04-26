@@ -8,17 +8,24 @@
 
 🇬🇧 [Read in English](README.md)
 
-Intégration Home Assistant non officielle pour le portail client [Eaux de Marseille](https://www.eauxdemarseille.fr) (`espaceclients.eauxdemarseille.fr`).
+Intégration Home Assistant non officielle pour les portails clients des trois fournisseurs d'eau du bassin marseillais. Malgré le chevauchement géographique, chaque fournisseur opère son propre portail et dessert des communes différentes :
 
-L'intégration récupère votre consommation d'eau depuis le portail toutes les heures et l'expose sous forme de capteurs Home Assistant, ainsi que des statistiques mensuelles compatibles avec le tableau de bord Énergie.
+- **Société des Eaux de Marseille (SEM)** — Ventabren, Bandol, Vitrolles, Trets, Fuveau, Cabriès, Bouc-Bel-Air, Le Puy-Sainte-Réparade, Forcalquier et autres communes périphériques — [`espaceclients.eauxdemarseille.fr`](https://espaceclients.eauxdemarseille.fr)
+- **Eau de Marseille Métropole (SEMM)** — Marseille même, La Ciotat, Cassis, Carnoux, Carry-le-Rouet, Allauch, Marignane, Septèmes-les-Vallons, Gémenos et autres — [`espaceclients.eaudemarseille-metropole.fr`](https://espaceclients.eaudemarseille-metropole.fr)
+- **Vivaigo** — Salon-de-Provence, Berre-l'Étang, Lambesc, Eyguières, Pélissanne, Velaux, Rognac, Sénas, Lançon-de-Provence et le pays salonais/berrois — [`espaceclients.vivaigo.fr`](https://espaceclients.vivaigo.fr)
 
-> Ce projet n'est pas affilié à Eaux de Marseille ou à la Société des Eaux de Marseille (SEM/SOMEI), ni sponsorisé par eux.
+Les trois fournisseurs partagent la même infrastructure technique (opérée par SOMEI/Veolia), c'est pourquoi cette intégration unique gère les trois — vous choisissez le vôtre dans un menu déroulant lors de la configuration.
+
+L'intégration récupère votre consommation d'eau depuis le portail choisi toutes les heures et l'expose sous forme de capteurs Home Assistant, ainsi que des statistiques mensuelles compatibles avec le tableau de bord Énergie.
+
+> Ce projet n'est pas affilié à Société des Eaux de Marseille, Eau de Marseille Métropole, Vivaigo ou SOMEI, ni sponsorisé par eux.
 
 ---
 
 ## Fonctionnalités
 
 - Configuration via l'interface Home Assistant — pas de YAML
+- Supporte SEM, SEMM et Vivaigo via une seule intégration (sélecteur de fournisseur dans le formulaire)
 - 12 capteurs par contrat (consommation, index compteur, moyenne journalière, périodes de facturation)
 - Import des statistiques mensuelles historiques depuis 2024 — compatible avec le tableau de bord Énergie de HA
 - Rafraîchissement automatique toutes les heures avec retry/backoff sur erreurs transitoires
@@ -49,7 +56,7 @@ Une **statistique externe mensuelle** est également importée sous l'identifian
 ## Prérequis
 
 - Home Assistant 2024.1 ou plus récent
-- Un compte actif sur [espaceclients.eauxdemarseille.fr](https://espaceclients.eauxdemarseille.fr)
+- Un compte actif sur l'un des trois portails clients (SEM, SEMM ou Vivaigo)
 - Votre numéro de contrat (visible sur vos factures ou dans l'URL du portail après connexion)
 
 ## Installation
@@ -83,11 +90,12 @@ L'intégration vérifie les identifiants, puis crée l'appareil et ses capteurs.
 
 | Champ | Obligatoire | Format | Description | Où le trouver |
 |---|---|---|---|---|
-| **Email** | Oui | Adresse e-mail | Email de connexion au portail | L'adresse utilisée sur [espaceclients.eauxdemarseille.fr](https://espaceclients.eauxdemarseille.fr) |
+| **Fournisseur d'eau** | Oui | Liste déroulante | Quel fournisseur dessert votre adresse | SEM (Ventabren, Bandol, Vitrolles, Trets…), SEMM (Marseille, La Ciotat, Cassis, Marignane…) ou Vivaigo (Salon, Berre, Lambesc, Eyguières…). Choisissez celui dont vous utilisez le portail client. |
+| **Email** | Oui | Adresse e-mail | Email de connexion au portail | L'adresse utilisée sur le portail de votre fournisseur |
 | **Mot de passe** | Oui | Chaîne | Mot de passe du portail | Identique au site. Stocké chiffré au repos par Home Assistant. |
-| **Numéro de contrat** | Oui | Numérique (typiquement 7 chiffres) | Identifiant de votre contrat | Visible sur vos factures sous « Numéro de contrat » et dans l'URL du portail après connexion (`https://espaceclients.eauxdemarseille.fr/#/dashboard/<contrat>`) |
+| **Numéro de contrat** | Oui | Numérique (typiquement 7 chiffres) | Identifiant de votre contrat | Visible sur vos factures sous « Numéro de contrat » et dans l'URL du portail après connexion (`https://<portail>/#/dashboard/<contrat>`) |
 
-Le numéro de contrat sert également d'identifiant unique pour l'entrée de configuration — vous ne pouvez pas ajouter deux fois le même contrat.
+La combinaison *(fournisseur + numéro de contrat)* sert d'identifiant unique pour l'entrée de configuration — vous ne pouvez pas ajouter deux fois le même contrat sur le même portail.
 
 ### Réauthentification
 
@@ -127,7 +135,7 @@ Si **aucune** ligne `Authentication` n'apparaît, c'est que l'intégration n'est
 Vérifiez la carte de l'intégration pour le message d'erreur. Causes courantes :
 - Session du portail expirée ou mot de passe modifié → supprimez et recréez l'intégration
 - Portail en panne → Home Assistant réessaiera à la prochaine actualisation
-- Problème réseau → vérifiez que Home Assistant peut joindre `espaceclients.eauxdemarseille.fr`
+- Problème réseau → vérifiez que Home Assistant peut joindre l'hôte du portail de votre fournisseur (`espaceclients.eauxdemarseille.fr`, `espaceclients.eaudemarseille-metropole.fr` ou `espaceclients.vivaigo.fr`)
 
 ### Signaler un bug
 
@@ -141,7 +149,7 @@ Merci d'inclure :
 
 ## Fonctionnement
 
-Le portail `espaceclients.eauxdemarseille.fr` est une SPA AngularJS reposant sur une API REST. L'authentification suit un flux en cinq étapes :
+Les trois portails sont des SPA AngularJS reposant sur la même API REST (opérée par SOMEI/Veolia). Seuls le nom d'hôte et les credentials applicatifs intégrés diffèrent entre fournisseurs. L'authentification suit un flux en cinq étapes :
 
 1. **GET** sur la page d'accueil du portail pour obtenir un cookie de session
 2. **POST** `/webapi/Acces/generateToken` — échange une clé applicative statique (embarquée dans le bundle JS du portail) contre un token de courte durée
@@ -161,7 +169,7 @@ Cette intégration manipule vos identifiants du portail. En interne :
 
 ## Avertissement
 
-Ce projet effectue de la rétro-ingénierie de l'API web du portail à des fins personnelles. Il n'est ni supporté, ni sponsorisé, ni endorsé par Eaux de Marseille ou la Société des Eaux de Marseille. Les clés applicatives embarquées dans le bundle JS public du portail sont réutilisées telles quelles — elles peuvent changer sans préavis, auquel cas l'intégration devra être mise à jour.
+Ce projet effectue de la rétro-ingénierie des API web des portails clients à des fins personnelles. Il n'est ni supporté, ni sponsorisé, ni endorsé par SEM, SEMM, Vivaigo ou SOMEI. Les clés applicatives embarquées dans les bundles JS publics de chaque portail sont réutilisées telles quelles — elles peuvent changer sans préavis, auquel cas l'intégration devra être mise à jour.
 
 À utiliser à vos propres risques.
 

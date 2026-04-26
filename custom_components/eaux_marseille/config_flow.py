@@ -17,8 +17,9 @@ _LOGGER = logging.getLogger(__name__)
 
 # Display labels for each provider in the dropdown.
 _PROVIDER_LABELS = {
-    Provider.SEM: "Société des Eaux de Marseille (Marseille)",
-    Provider.SEMM: "Eau de Marseille Métropole (Aix-Marseille-Provence)",
+    Provider.SEM: "Société des Eaux de Marseille (Ventabren, Bandol, Vitrolles, Trets…)",
+    Provider.SEMM: "Eau de Marseille Métropole (Marseille, La Ciotat, Cassis, Marignane…)",
+    Provider.VIVAIGO: "Vivaigo (Salon, Berre, Lambesc, Eyguières…)",
 }
 
 STEP_USER_DATA_SCHEMA = vol.Schema(

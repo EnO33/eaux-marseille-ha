@@ -11,7 +11,7 @@
           "contract_id": "Contract number"
         },
         "data_description": {
-          "provider": "Choose 'SEM' if you log in on espaceclients.eauxdemarseille.fr (Marseille intra-muros). Choose 'SEMM' if you log in on espaceclients.eaudemarseille-metropole.fr (Aix-Marseille-Provence Métropole)."
+          "provider": "Pick the utility whose customer portal you log in to: SEM for espaceclients.eauxdemarseille.fr (Ventabren, Bandol, Vitrolles, Trets and other peripheral communes), SEMM for espaceclients.eaudemarseille-metropole.fr (Marseille proper, La Ciotat, Cassis, Marignane and surroundings), or Vivaigo for espaceclients.vivaigo.fr (Salon, Berre, Lambesc, Eyguières and the Salon-Berre area)."
         }
       },
       "reauth_confirm": {

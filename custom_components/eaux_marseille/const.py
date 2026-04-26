@@ -25,12 +25,17 @@ CONF_PROVIDER = "provider"
 
 
 class Provider(StrEnum):
-    """The two distinct water utilities served by the same back-end stack."""
+    """Water utilities served by the same back-end stack (SOMEI/Veolia)."""
 
-    # Société des Eaux de Marseille — Marseille intra-muros.
+    # Société des Eaux de Marseille — periphery: Ventabren, Bandol,
+    # Cabriès, Fuveau, Vitrolles, Trets, Le Puy-Sainte-Réparade…
     SEM = "sem"
-    # Eau de Marseille Métropole — Métropole Aix-Marseille-Provence.
+    # Eau de Marseille Métropole — Marseille proper, plus Allauch,
+    # La Ciotat, Cassis, Marignane, Carry-le-Rouet, Carnoux, Gémenos…
     SEMM = "semm"
+    # Vivaigo — Salon-de-Provence, Berre-l'Étang, Lambesc, Eyguières,
+    # Pélissanne, Velaux, Rognac, Sénas, etc.
+    VIVAIGO = "vivaigo"
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +69,12 @@ PROVIDERS: dict[Provider, PortalEndpoints] = {
         host="espaceclients.eaudemarseille-metropole.fr",
         client_id="SOMEI-SEMM-PRD",
         access_key="XX_ma3pD-2017-SEMM-PRD!",
+    ),
+    Provider.VIVAIGO: PortalEndpoints(
+        url="https://espaceclients.vivaigo.fr",
+        host="espaceclients.vivaigo.fr",
+        client_id="SOMEI-VIE-PRD",
+        access_key="QT_gha8D-2024-VIE-PRD!",
     ),
 }
 

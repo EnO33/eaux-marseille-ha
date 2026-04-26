@@ -8,17 +8,24 @@
 
 🇫🇷 [Lire en français](README.fr.md)
 
-Unofficial Home Assistant integration for the [Eaux de Marseille](https://www.eauxdemarseille.fr) customer portal (`espaceclients.eauxdemarseille.fr`).
+Unofficial Home Assistant integration for the customer portals of the three water utilities serving the Marseille area. Despite the geographic overlap, each utility runs its own portal and serves a distinct set of communes:
 
-It pulls your water consumption from the portal every hour and exposes it as Home Assistant sensors, plus monthly statistics that plug into the Energy dashboard.
+- **Société des Eaux de Marseille (SEM)** — Ventabren, Bandol, Vitrolles, Trets, Fuveau, Cabriès, Bouc-Bel-Air, Le Puy-Sainte-Réparade, Forcalquier and other peripheral communes — [`espaceclients.eauxdemarseille.fr`](https://espaceclients.eauxdemarseille.fr)
+- **Eau de Marseille Métropole (SEMM)** — Marseille proper, La Ciotat, Cassis, Carnoux, Carry-le-Rouet, Allauch, Marignane, Septèmes-les-Vallons, Gémenos and others — [`espaceclients.eaudemarseille-metropole.fr`](https://espaceclients.eaudemarseille-metropole.fr)
+- **Vivaigo** — Salon-de-Provence, Berre-l'Étang, Lambesc, Eyguières, Pélissanne, Velaux, Rognac, Sénas, Lançon-de-Provence and the wider Salon/Berre area — [`espaceclients.vivaigo.fr`](https://espaceclients.vivaigo.fr)
 
-> This project is not affiliated with or endorsed by Eaux de Marseille or the Société des Eaux de Marseille (SEM/SOMEI).
+The three utilities share the same back-end stack (operated by SOMEI/Veolia), so this integration handles all of them — you pick yours from a dropdown when configuring the integration.
+
+It pulls your water consumption from the chosen portal every hour and exposes it as Home Assistant sensors, plus monthly statistics that plug into the Energy dashboard.
+
+> This project is not affiliated with or endorsed by Société des Eaux de Marseille, Eau de Marseille Métropole, Vivaigo or SOMEI.
 
 ---
 
 ## Features
 
 - UI-based configuration — no YAML editing
+- Supports SEM, SEMM and Vivaigo via a single integration (provider selector in the form)
 - 12 sensors per contract (consumption, meter index, daily average, billing periods)
 - Historical monthly statistics imported back to 2024 — works with the HA Energy dashboard
 - Automatic hourly refresh with retry/backoff on transient errors
@@ -49,7 +56,7 @@ A **monthly external statistic** is also imported under the ID `eaux_marseille:m
 ## Requirements
 
 - Home Assistant 2024.1 or later
-- An active account on [espaceclients.eauxdemarseille.fr](https://espaceclients.eauxdemarseille.fr)
+- An active account on one of the three customer portals (SEM, SEMM or Vivaigo)
 - Your contract number (visible on bills or in the portal URL after login)
 
 ## Installation
@@ -83,11 +90,12 @@ The integration will validate the credentials, then expose the device and its se
 
 | Field | Required | Format | Description | Where to find it |
 |---|---|---|---|---|
-| **Email** | Yes | Email address | Login email for the portal | The address you use on [espaceclients.eauxdemarseille.fr](https://espaceclients.eauxdemarseille.fr) |
+| **Water utility** | Yes | Dropdown | Which utility serves your address | SEM (Marseille intra-muros), SEMM (Métropole Aix-Marseille-Provence) or Vivaigo (Salon, Berre, Lambesc, etc.). Use the same one whose customer portal you log in to. |
+| **Email** | Yes | Email address | Login email for the portal | The address you use on the portal of your utility |
 | **Password** | Yes | String | Portal password | Same as the website. Stored encrypted at rest by Home Assistant. |
-| **Contract number** | Yes | Numeric (typically 7 digits) | Your contract identifier | Visible on your water bills under "Numéro de contrat" and in the portal URL after login (`https://espaceclients.eauxdemarseille.fr/#/dashboard/<contract>`) |
+| **Contract number** | Yes | Numeric (typically 7 digits) | Your contract identifier | Visible on your water bills under "Numéro de contrat" and in the portal URL after login (`https://<portal>/#/dashboard/<contract>`) |
 
-The contract number also acts as the unique identifier for the integration entry — you cannot add the same contract twice.
+The combination *(utility + contract number)* acts as the unique identifier for the integration entry — you cannot add the same contract on the same portal twice.
 
 ### Reauthentication
 
@@ -127,7 +135,7 @@ If you see no `Authentication` lines at all, the integration isn't being loaded 
 Check the integration card for an error message. Common causes:
 - Portal session expired or password changed → remove and re-add the integration
 - Portal is down → Home Assistant will retry on the next refresh
-- Network issue → check that Home Assistant can reach `espaceclients.eauxdemarseille.fr`
+- Network issue → check that Home Assistant can reach the portal host of your selected utility (`espaceclients.eauxdemarseille.fr`, `espaceclients.eaudemarseille-metropole.fr` or `espaceclients.vivaigo.fr`)
 
 ### Reporting bugs
 
@@ -141,7 +149,7 @@ Please include:
 
 ## How it works
 
-The portal at `espaceclients.eauxdemarseille.fr` is an AngularJS SPA backed by a REST API. Authentication follows a five-step flow:
+All three portals are AngularJS SPAs backed by the same REST API (operated by SOMEI/Veolia). Only the host name and the embedded application credentials differ between providers. Authentication follows a five-step flow:
 
 1. **GET** the portal landing page to acquire a session cookie
 2. **POST** `/webapi/Acces/generateToken` — exchanges a static application key (embedded in the portal JS bundle) for a short-lived token
@@ -161,7 +169,7 @@ This integration handles your portal credentials. Internally:
 
 ## Disclaimer
 
-This project reverse-engineers the portal's web API for personal use. It is not supported, sponsored, or endorsed by Eaux de Marseille or the Société des Eaux de Marseille. The application keys embedded in the portal's public JS bundle are reused as-is — they may change without notice, in which case the integration will need to be updated.
+This project reverse-engineers the customer portals' web API for personal use. It is not supported, sponsored, or endorsed by SEM, SEMM, Vivaigo or SOMEI. The application keys embedded in each portal's public JS bundle are reused as-is — they may change without notice, in which case the integration will need to be updated.
 
 Use at your own risk.
 
