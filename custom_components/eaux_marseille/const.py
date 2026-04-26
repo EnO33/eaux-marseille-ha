@@ -35,10 +35,17 @@ class Provider(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class PortalEndpoints:
-    """Per-provider customer-portal base URL and host."""
+    """Per-provider customer-portal URL, host and static app credentials.
+
+    Both portals are operated by the same vendor (SOMEI/Veolia) and share
+    the same ``/webapi`` schema, but each one issues its own application
+    credentials embedded in its public JavaScript bundle.
+    """
 
     url: str
     host: str
+    client_id: str
+    access_key: str
 
     @property
     def api_base(self) -> str:
@@ -49,10 +56,14 @@ PROVIDERS: dict[Provider, PortalEndpoints] = {
     Provider.SEM: PortalEndpoints(
         url="https://espaceclients.eauxdemarseille.fr",
         host="espaceclients.eauxdemarseille.fr",
+        client_id="SOMEI-GSEM-PRD",
+        access_key="XX_ma2DD-2017-GSEM-PRD!",
     ),
     Provider.SEMM: PortalEndpoints(
         url="https://espaceclients.eaudemarseille-metropole.fr",
         host="espaceclients.eaudemarseille-metropole.fr",
+        client_id="SOMEI-SEMM-PRD",
+        access_key="XX_ma3pD-2017-SEMM-PRD!",
     ),
 }
 
@@ -63,13 +74,8 @@ DEFAULT_PROVIDER = Provider.SEM
 PORTAL_URL = PROVIDERS[DEFAULT_PROVIDER].url
 PORTAL_HOST = PROVIDERS[DEFAULT_PROVIDER].host
 API_BASE = PROVIDERS[DEFAULT_PROVIDER].api_base
-
-# Static application credentials embedded in the portal JavaScript bundle.
-# These identify the *web client* to the API and are not user credentials.
-# Both portals are operated by the same vendor (SOMEI/Veolia) and accept
-# the same credentials.
-APP_CLIENT_ID = "SOMEI-GSEM-PRD"
-APP_ACCESS_KEY = "XX_ma2DD-2017-GSEM-PRD!"
+APP_CLIENT_ID = PROVIDERS[DEFAULT_PROVIDER].client_id
+APP_ACCESS_KEY = PROVIDERS[DEFAULT_PROVIDER].access_key
 
 # ---------------------------------------------------------------------
 # HTTP behaviour

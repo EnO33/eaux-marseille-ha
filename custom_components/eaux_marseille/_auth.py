@@ -26,8 +26,6 @@ from yarl import URL
 
 from . import _http
 from .const import (
-    APP_ACCESS_KEY,
-    APP_CLIENT_ID,
     PROVIDERS,
     PortalEndpoints,
     Provider,
@@ -126,14 +124,15 @@ class PortalAuth:
 
     async def _step_generate_token(self) -> str:
         cid = conversation_id()
+        access_key = self._endpoints.access_key
         data = await self._auth_call(
             "POST",
             "/Acces/generateToken",
-            extra_headers={"ConversationId": cid, "token": APP_ACCESS_KEY},
+            extra_headers={"ConversationId": cid, "token": access_key},
             json_payload={
                 "ConversationId": cid,
-                "ClientId": APP_CLIENT_ID,
-                "AccessKey": APP_ACCESS_KEY,
+                "ClientId": self._endpoints.client_id,
+                "AccessKey": access_key,
             },
             require_field="token",
             error_prefix="Token generation failed",
