@@ -28,6 +28,7 @@ except (ImportError, ModuleNotFoundError):
         "homeassistant.core",
         "homeassistant.exceptions",
         "homeassistant.components",
+        "homeassistant.components.diagnostics",
         "homeassistant.components.sensor",
         "homeassistant.components.recorder",
         "homeassistant.components.recorder.models",

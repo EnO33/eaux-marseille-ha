@@ -9,6 +9,7 @@ them trivially testable without any HTTP mocking.
 
 from __future__ import annotations
 
+import json
 import urllib.parse
 from dataclasses import dataclass
 from typing import Any
@@ -94,23 +95,29 @@ def encode_context_cookie(
 ) -> str:
     """Build the value of the portal's ``AEL_CONTEXT`` cookie.
 
-    The portal's JS bundle stores a JSON-like blob (with double quotes
-    instead of Python's repr single quotes), URL-encoded.
+    The portal's JS bundle stores a JSON blob (the same shape it
+    produces with ``JSON.stringify`` on the user/context), URL-encoded.
     """
+    # Defensive: ``.get(key) or ''`` handles both missing keys and explicit
+    # ``None`` values. ``str(dict)`` was previously used here but produced
+    # invalid JSON for any value containing apostrophes (and serialised
+    # ``None`` as the literal ``"None"``).
+    prenom = user_info.get("prenom") or ""
+    nom = user_info.get("nom") or ""
     context = {
         "type": "contrat",
         "object": contract,
         "user": {
             "identifiant": user_info["identifiant"],
-            "nomComplet": f"{user_info.get('prenom', '')} {user_info.get('nom', '')}",
-            "nom": user_info.get("nom", ""),
-            "prenom": user_info.get("prenom", ""),
-            "email": user_info.get("email", ""),
-            "titre": user_info.get("titre", ""),
+            "nomComplet": f"{prenom} {nom}".strip(),
+            "nom": nom,
+            "prenom": prenom,
+            "email": user_info.get("email") or "",
+            "titre": user_info.get("titre") or "",
             "tokenAuthentique": ael_token,
             "userWebId": user_info.get("userWebId"),
-            "meta": user_info.get("meta", {}),
-            "profils": user_info.get("profils", []),
+            "meta": user_info.get("meta") or {},
+            "profils": user_info.get("profils") or [],
         },
     }
-    return urllib.parse.quote_plus(str(context).replace("'", '"'))
+    return urllib.parse.quote_plus(json.dumps(context, ensure_ascii=False))

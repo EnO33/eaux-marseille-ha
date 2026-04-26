@@ -5,8 +5,10 @@ These tests mock HTTP calls and do not require Home Assistant.
 
 from __future__ import annotations
 
+import json
 import re
 import socket
+import urllib.parse
 
 import aiohttp
 import pytest
@@ -14,13 +16,20 @@ from aiohttp.client_reqrep import ConnectionKey
 from aioresponses import aioresponses
 
 from custom_components.eaux_marseille.api import (
-    _API_BASE,
-    _PORTAL_URL,
     ConsumptionData,
     EauxDeMarseilleApiError,
     EauxDeMarseilleAuthError,
     EauxDeMarseilleClient,
 )
+from custom_components.eaux_marseille.const import PROVIDERS, Provider
+from custom_components.eaux_marseille.diagnostics import _scrub_exception
+from custom_components.eaux_marseille.models import encode_context_cookie
+
+# The default provider used by EauxDeMarseilleClient when constructed
+# without an explicit ``provider`` kwarg. Tests target SEM since that's
+# what the bare ``EauxDeMarseilleClient(...)`` fixture uses.
+_PORTAL_URL = PROVIDERS[Provider.SEM].url
+_API_BASE = PROVIDERS[Provider.SEM].api_base
 
 CONTRACT_ID = "1234567"
 
@@ -526,3 +535,104 @@ class TestClientLifecycle:
         await c.close()
         assert not session.closed
         await session.close()
+
+
+class TestEncodeContextCookie:
+    """Test that the AEL_CONTEXT cookie is built as valid JSON."""
+
+    def _decode(self, encoded: str) -> dict:
+        """Reverse the URL-encoding + JSON parse to inspect the payload."""
+        return json.loads(urllib.parse.unquote_plus(encoded))
+
+    def test_round_trip_simple(self) -> None:
+        """A trivial user roundtrips cleanly through JSON."""
+        encoded = encode_context_cookie(
+            contract={"numContrat": "1234567"},
+            user_info={
+                "identifiant": "user@example.com",
+                "nom": "Doe",
+                "prenom": "John",
+                "email": "user@example.com",
+                "titre": "M.",
+                "userWebId": 42,
+                "meta": {},
+                "profils": [],
+            },
+            ael_token="fake-token",
+        )
+        payload = self._decode(encoded)
+        assert payload["type"] == "contrat"
+        assert payload["object"] == {"numContrat": "1234567"}
+        assert payload["user"]["nomComplet"] == "John Doe"
+        assert payload["user"]["tokenAuthentique"] == "fake-token"
+
+    def test_apostrophe_in_name_preserved(self) -> None:
+        """An apostrophe in the user name doesn't corrupt the JSON."""
+        encoded = encode_context_cookie(
+            contract={"numContrat": "1234567"},
+            user_info={
+                "identifiant": "obrien@example.com",
+                "nom": "O'Brien",
+                "prenom": "Sean",
+                "email": "obrien@example.com",
+                "titre": "M.",
+                "userWebId": 1,
+                "meta": {},
+                "profils": [],
+            },
+            ael_token="fake-token",
+        )
+        # Must not raise: previously str(dict).replace("'", '"') would
+        # have produced invalid JSON for "O'Brien".
+        payload = self._decode(encoded)
+        assert payload["user"]["nom"] == "O'Brien"
+        assert payload["user"]["nomComplet"] == "Sean O'Brien"
+
+    def test_none_values_become_empty_strings(self) -> None:
+        """Explicit None values do not surface as the literal 'None' string."""
+        encoded = encode_context_cookie(
+            contract={"numContrat": "1234567"},
+            user_info={
+                "identifiant": "user@example.com",
+                "nom": None,
+                "prenom": None,
+                "email": None,
+                "titre": None,
+                "userWebId": None,
+                "meta": None,
+                "profils": None,
+            },
+            ael_token="fake-token",
+        )
+        payload = self._decode(encoded)
+        # The literal string "None" must not appear anywhere — that was
+        # the str(dict) bug.
+        assert "None" not in encoded
+        assert payload["user"]["nom"] == ""
+        assert payload["user"]["nomComplet"] == ""
+        assert payload["user"]["meta"] == {}
+        assert payload["user"]["profils"] == []
+
+
+class TestDiagnosticsScrub:
+    """Verify the diagnostics helper redacts contract id / username."""
+
+    def test_scrub_redacts_contract_id_in_repr(self) -> None:
+        """An exception whose repr contains the contract ID gets redacted."""
+        err = EauxDeMarseilleApiError("Request to https://example.com/foo/1234567 failed: timeout")
+        scrubbed = _scrub_exception(err, contract_id="1234567", username="bob@x.com")
+        assert "1234567" not in scrubbed
+        assert "**REDACTED**" in scrubbed
+
+    def test_scrub_redacts_username(self) -> None:
+        """An exception whose repr contains the username gets redacted."""
+        err = EauxDeMarseilleAuthError("Login failed for bob@x.com: HTTP 401")
+        scrubbed = _scrub_exception(err, contract_id="1234567", username="bob@x.com")
+        assert "bob@x.com" not in scrubbed
+        assert "**REDACTED**" in scrubbed
+
+    def test_scrub_passthrough_when_empty_id(self) -> None:
+        """No-op when contract id / username are empty."""
+        err = EauxDeMarseilleApiError("transport error")
+        scrubbed = _scrub_exception(err, contract_id="", username="")
+        assert "transport error" in scrubbed

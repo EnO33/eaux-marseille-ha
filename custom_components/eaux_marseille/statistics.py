@@ -99,7 +99,16 @@ async def _collect_new_stats(
     stats: list[StatisticData] = []
     current_year = datetime.now(UTC).year
 
-    for year in range(_START_YEAR, current_year + 1):
+    # If we already imported some history, only refetch from that year
+    # forward — re-walking the years before ``last_ts`` would just hit
+    # the portal for entries we'd discard. On a fresh entry, ``last_ts``
+    # is 0.0 and we start from ``_START_YEAR``.
+    if last_ts > 0:
+        start_year = max(_START_YEAR, datetime.fromtimestamp(last_ts, tz=UTC).year)
+    else:
+        start_year = _START_YEAR
+
+    for year in range(start_year, current_year + 1):
         try:
             entries = await client.fetch_monthly_range(year)
         except Exception as err:

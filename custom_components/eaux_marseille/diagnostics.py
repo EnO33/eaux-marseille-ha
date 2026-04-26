@@ -22,6 +22,23 @@ from . import EauxDeMarseilleConfigEntry
 from .const import CONF_CONTRACT_ID
 
 _REDACT_KEYS = {CONF_PASSWORD, CONF_USERNAME, CONF_CONTRACT_ID}
+_REDACTED = "**REDACTED**"
+
+
+def _scrub_exception(exc: BaseException, contract_id: str, username: str) -> str:
+    """Return a printable form of ``exc`` with credentials/IDs redacted.
+
+    The integration's error messages embed the full request URL (which
+    contains the contract ID) and sometimes echo response bodies. We
+    pre-scrub them here so the diagnostics download stays safe to attach
+    to a public bug report.
+    """
+    text = repr(exc)
+    if contract_id:
+        text = text.replace(contract_id, _REDACTED)
+    if username:
+        text = text.replace(username, _REDACTED)
+    return text
 
 
 async def async_get_config_entry_diagnostics(
@@ -30,6 +47,7 @@ async def async_get_config_entry_diagnostics(
 ) -> dict[str, Any]:
     """Return sanitized diagnostics for ``entry``."""
     coordinator = entry.runtime_data.coordinator
+    last_exception = coordinator.last_exception
     return {
         "entry": {
             "data": async_redact_data(dict(entry.data), _REDACT_KEYS),
@@ -44,7 +62,13 @@ async def async_get_config_entry_diagnostics(
                 coordinator.update_interval.total_seconds() if coordinator.update_interval else None
             ),
             "last_exception": (
-                repr(coordinator.last_exception) if coordinator.last_exception else None
+                _scrub_exception(
+                    last_exception,
+                    contract_id=str(entry.data.get(CONF_CONTRACT_ID, "")),
+                    username=str(entry.data.get(CONF_USERNAME, "")),
+                )
+                if last_exception
+                else None
             ),
         },
         "data": asdict(coordinator.data) if coordinator.data is not None else None,

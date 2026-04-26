@@ -14,7 +14,15 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import EauxDeMarseilleConfigEntry
 from ._sensor_descriptions import SENSOR_DESCRIPTIONS, EauxDeMarseilleEntityDescription
-from .const import CONF_CONTRACT_ID, DOMAIN
+from .const import (
+    CONF_CONTRACT_ID,
+    CONF_PROVIDER,
+    DEFAULT_PROVIDER,
+    DOMAIN,
+    PROVIDER_MANUFACTURER,
+    PROVIDERS,
+    Provider,
+)
 from .coordinator import EauxDeMarseilleCoordinator
 
 # All sensors share a single coordinator that already serialises requests,
@@ -30,8 +38,10 @@ async def async_setup_entry(
     """Set up Eaux de Marseille sensors from a config entry."""
     coordinator = entry.runtime_data.coordinator
     contract_id: str = entry.data[CONF_CONTRACT_ID]
+    # Entries created before 1.9.0 don't store the provider; default to SEM.
+    provider = Provider(entry.data.get(CONF_PROVIDER, DEFAULT_PROVIDER.value))
     async_add_entities(
-        EauxDeMarseilleSensor(coordinator, description, contract_id)
+        EauxDeMarseilleSensor(coordinator, description, contract_id, provider)
         for description in SENSOR_DESCRIPTIONS
     )
 
@@ -47,6 +57,7 @@ class EauxDeMarseilleSensor(CoordinatorEntity[EauxDeMarseilleCoordinator], Senso
         coordinator: EauxDeMarseilleCoordinator,
         description: EauxDeMarseilleEntityDescription,
         contract_id: str,
+        provider: Provider,
     ) -> None:
         super().__init__(coordinator)
         self.entity_description = description
@@ -54,9 +65,9 @@ class EauxDeMarseilleSensor(CoordinatorEntity[EauxDeMarseilleCoordinator], Senso
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, contract_id)},
             name=f"Eaux de Marseille — Contrat {contract_id}",
-            manufacturer="Société des Eaux de Marseille",
+            manufacturer=PROVIDER_MANUFACTURER[provider],
             model="Compteur télérelevé",
-            configuration_url="https://espaceclients.eauxdemarseille.fr",
+            configuration_url=PROVIDERS[provider].url,
         )
 
     @property

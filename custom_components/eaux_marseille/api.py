@@ -18,9 +18,7 @@ import aiohttp
 
 from ._auth import PortalAuth
 from .const import (
-    API_BASE,
     DEFAULT_PROVIDER,
-    PORTAL_URL,
     PROVIDERS,
     REQUEST_TIMEOUT_S,
     Provider,
@@ -39,10 +37,6 @@ __all__ = [
     "EauxDeMarseilleClient",
     "EauxDeMarseilleError",
 ]
-
-# Aliased so existing test imports keep working.
-_PORTAL_URL = PORTAL_URL
-_API_BASE = API_BASE
 
 
 class EauxDeMarseilleClient:

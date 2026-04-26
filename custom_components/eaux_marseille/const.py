@@ -78,15 +78,16 @@ PROVIDERS: dict[Provider, PortalEndpoints] = {
     ),
 }
 
-DEFAULT_PROVIDER = Provider.SEM
+# Human-readable utility names. Used as the ``manufacturer`` of the
+# device created for each contract so the HA device card shows the
+# actual utility (not the integration brand).
+PROVIDER_MANUFACTURER: dict[Provider, str] = {
+    Provider.SEM: "Société des Eaux de Marseille",
+    Provider.SEMM: "Eau de Marseille Métropole",
+    Provider.VIVAIGO: "Vivaigo",
+}
 
-# Backwards-compat aliases for existing test imports (see
-# ``custom_components.eaux_marseille.api._PORTAL_URL`` etc.).
-PORTAL_URL = PROVIDERS[DEFAULT_PROVIDER].url
-PORTAL_HOST = PROVIDERS[DEFAULT_PROVIDER].host
-API_BASE = PROVIDERS[DEFAULT_PROVIDER].api_base
-APP_CLIENT_ID = PROVIDERS[DEFAULT_PROVIDER].client_id
-APP_ACCESS_KEY = PROVIDERS[DEFAULT_PROVIDER].access_key
+DEFAULT_PROVIDER = Provider.SEM
 
 # ---------------------------------------------------------------------
 # HTTP behaviour
@@ -124,8 +125,3 @@ def headers_for(endpoints: PortalEndpoints) -> dict[str, str]:
         "Origin": endpoints.url,
         "Referer": f"{endpoints.url}/",
     }
-
-
-# Backwards-compat alias: existing modules import DEFAULT_HEADERS expecting
-# the SEM headers. Computed once at import time from the default provider.
-DEFAULT_HEADERS: dict[str, str] = headers_for(PROVIDERS[DEFAULT_PROVIDER])
