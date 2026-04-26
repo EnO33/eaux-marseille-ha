@@ -183,3 +183,10 @@ Contributions are welcome. Please:
 ## License
 
 [MIT](LICENSE)
+
+
+---
+
+## Auto-generated contribution
+
+Added by bounty bot.
