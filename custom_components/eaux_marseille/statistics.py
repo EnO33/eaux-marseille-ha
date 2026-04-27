@@ -86,6 +86,7 @@ async def async_import_historical_statistics(
             severity=ir.IssueSeverity.WARNING,
             translation_key="statistics_import_failed",
             translation_placeholders={"contract_id": contract_id},
+            learn_more_url="https://github.com/EnO33/eaux-marseille-ha/issues",
         )
         return
     # On success, clear any previously raised repair issue.

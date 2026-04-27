@@ -62,7 +62,7 @@
   "issues": {
     "statistics_import_failed": {
       "title": "Historical statistics import failed",
-      "description": "Eaux de Marseille could not import the historical monthly consumption for contract {contract_id}. The integration keeps polling normally and the issue will clear automatically on the next successful import. If it persists, check the Home Assistant logs for the underlying error and consider opening a bug report at https://github.com/EnO33/eaux-marseille-ha/issues."
+      "description": "Eaux de Marseille could not import the historical monthly consumption for contract {contract_id}. The integration keeps polling normally and the issue will clear automatically on the next successful import. If the issue persists, check the Home Assistant logs for the underlying error and use the link below to open a bug report."
     }
   }
 }
