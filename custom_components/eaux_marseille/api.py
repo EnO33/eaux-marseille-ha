@@ -74,8 +74,11 @@ class EauxDeMarseilleClient:
         # via systemd-resolved, NSS or /etc/hosts but UDP to the upstream
         # DNS is blocked or misconfigured. ThreadedResolver goes through the
         # same path the rest of the OS uses and works in all of these cases.
+        # Default ``CookieJar`` (i.e. ``unsafe=False``) refuses cookies set
+        # for IP literals; we only ever talk to the portal hostnames so the
+        # stricter mode adds defence-in-depth at zero cost.
         self._session = session or aiohttp.ClientSession(
-            cookie_jar=aiohttp.CookieJar(unsafe=True),
+            cookie_jar=aiohttp.CookieJar(),
             timeout=self._timeout,
             connector=aiohttp.TCPConnector(resolver=aiohttp.ThreadedResolver()),
         )
