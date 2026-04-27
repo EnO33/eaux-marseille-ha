@@ -235,8 +235,7 @@ class PortalAuth:
             raise EauxDeMarseilleAuthError(f"{error_prefix}: {err}") from err
 
         if require_field and (not data or require_field not in data):
-            keys = sorted(data.keys()) if isinstance(data, dict) else type(data).__name__
             raise EauxDeMarseilleAuthError(
-                f"{error_prefix}: missing {require_field!r}; got: {keys}"
+                f"{error_prefix}: missing {require_field!r}; got: {sorted(data)}"
             )
         return data
