@@ -18,7 +18,6 @@ from typing import Any
 import aiohttp
 from tenacity import (
     AsyncRetrying,
-    RetryError,
     before_sleep_log,
     retry_if_exception_type,
     stop_after_attempt,
@@ -75,13 +74,10 @@ async def request_with_retry(
         raise EauxDeMarseilleApiError(
             f"Request to {url} failed after {MAX_RETRIES} attempts: {err}"
         ) from err
-    except RetryError as err:  # pragma: no cover  # tenacity wraps if reraise=False
-        raise EauxDeMarseilleApiError(
-            f"Request to {url} failed after {MAX_RETRIES} attempts: {err}"
-        ) from err
-    raise EauxDeMarseilleApiError(  # pragma: no cover
-        f"Retry loop exited without a result for {url}"
-    )
+    # The async-for loop above either returns or re-raises (reraise=True),
+    # so this point is unreachable. Keeping a defensive raise would only
+    # confuse readers; mypy is satisfied via the explicit Never return.
+    raise AssertionError("unreachable: AsyncRetrying with reraise=True always returns or raises")
 
 
 async def _send_following_redirects(
