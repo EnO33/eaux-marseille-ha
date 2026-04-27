@@ -65,14 +65,24 @@ class PortalAuth:
         self._timeout = timeout
         self._endpoints: PortalEndpoints = PROVIDERS[provider]
         self._base_headers = headers_for(self._endpoints)
-        self.token: str | None = None
+        # Two distinct tokens with very different lifetimes:
+        # * ``_app_token`` is the short-lived bearer returned by
+        #   ``/Acces/generateToken``; only used to authorise the login POST
+        #   in step 3.
+        # * ``_ael_token`` is the long-lived AEL session token returned by
+        #   the login POST itself; used for every authenticated request from
+        #   step 4 onwards.
+        # Splitting them keeps the lifecycle obvious and unblocks a future
+        # token-caching pass across coordinator polls (#12).
+        self._app_token: str | None = None
+        self._ael_token: str | None = None
 
     # ------------------------------------------------------------------
     # Public flow
     # ------------------------------------------------------------------
 
     async def authenticate(self, login: str, password: str) -> None:
-        """Run all 5 steps; ``self.token`` ends up holding the AEL token."""
+        """Run all 5 steps; ``self._ael_token`` holds the AEL session token."""
         _LOGGER.info("Authentication: step 1/5 (acquiring session cookie)")
         await self._step_landing()
 
@@ -110,7 +120,8 @@ class PortalAuth:
     # ------------------------------------------------------------------
 
     async def _step_landing(self) -> None:
-        self.token = None
+        self._app_token = None
+        self._ael_token = None
         try:
             async with self._session.get(
                 f"{self._endpoints.url}/",
@@ -163,7 +174,10 @@ class PortalAuth:
         password: str,
         temp_token: str,
     ) -> tuple[str, dict[str, Any]]:
-        self.token = temp_token
+        # The login POST itself must carry the short-lived app token in
+        # the ``token`` header. Once it returns, the AEL session token
+        # supersedes it and the app token is no longer useful.
+        self._app_token = temp_token
         data = await self._auth_call(
             "POST",
             "/Utilisateur/authentification",
@@ -173,7 +187,8 @@ class PortalAuth:
         )
         ael_token: str = data["tokenAuthentique"]
         user_info: dict[str, Any] = data["utilisateurInfo"]
-        self.token = ael_token
+        self._ael_token = ael_token
+        self._app_token = None
         self._set_cookie("aelToken", ael_token)
         return ael_token, user_info
 
@@ -196,10 +211,16 @@ class PortalAuth:
     # ------------------------------------------------------------------
 
     def _headers(self, extra: dict[str, str] | None = None) -> dict[str, str]:
-        """Build the standard request headers, with the bearer token if set."""
+        """Build the standard request headers, with the bearer token if set.
+
+        Prefers the long-lived AEL token over the short-lived app token —
+        both can never be set at the same time in the current flow, but the
+        precedence makes the contract explicit for future callers.
+        """
         headers = {**self._base_headers, "ConversationId": conversation_id()}
-        if self.token:
-            headers["token"] = self.token
+        token = self._ael_token or self._app_token
+        if token:
+            headers["token"] = token
         if extra:
             headers.update(extra)
         return headers
