@@ -64,5 +64,13 @@
       "title": "Échec de l'import des statistiques historiques",
       "description": "Eaux de Marseille n'a pas pu importer la consommation mensuelle historique pour le contrat {contract_id}. L'intégration continue de fonctionner normalement et le problème disparaîtra automatiquement au prochain import réussi. Si le problème persiste, consultez les logs Home Assistant pour l'erreur sous-jacente et utilisez le lien ci-dessous pour ouvrir un ticket."
     }
+  },
+  "exceptions": {
+    "auth_failed": {
+      "message": "Échec de l'authentification au portail : {error}"
+    },
+    "update_failed": {
+      "message": "Impossible de récupérer les données de consommation depuis le portail : {error}"
+    }
   }
 }

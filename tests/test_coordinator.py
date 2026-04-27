@@ -15,6 +15,7 @@ from custom_components.eaux_marseille.api import (
     EauxDeMarseilleApiError,
     EauxDeMarseilleAuthError,
 )
+from custom_components.eaux_marseille.const import DOMAIN
 from custom_components.eaux_marseille.coordinator import EauxDeMarseilleCoordinator
 
 from .conftest import MOCK_CONSUMPTION
@@ -35,19 +36,33 @@ async def test_coordinator_update_success(hass: HomeAssistant, mock_client: Magi
 async def test_coordinator_auth_error_raises_reauth(
     hass: HomeAssistant, mock_client: MagicMock
 ) -> None:
-    """Auth errors raise ConfigEntryAuthFailed so HA triggers the reauth flow."""
+    """Auth errors raise ConfigEntryAuthFailed with a translation key."""
     mock_client.authenticate.side_effect = EauxDeMarseilleAuthError("expired")
 
     coordinator = EauxDeMarseilleCoordinator(hass, mock_client)
-    with pytest.raises(ConfigEntryAuthFailed):
+    with pytest.raises(ConfigEntryAuthFailed) as excinfo:
         await coordinator._async_update_data()
+
+    # Verify the exception carries our translation key so HA renders the
+    # localised message instead of the raw English exception text.
+    assert excinfo.value.translation_domain == DOMAIN
+    assert excinfo.value.translation_key == "auth_failed"
+    assert excinfo.value.translation_placeholders == {"error": "expired"}
 
 
 async def test_coordinator_api_error(hass: HomeAssistant, mock_client: MagicMock) -> None:
-    """Coordinator sets last_update_success=False on API error."""
-    mock_client.fetch.side_effect = EauxDeMarseilleApiError("500")
+    """Coordinator sets last_update_success=False on API error.
+
+    The wrapped UpdateFailed exception also carries a translation key so
+    the integration card displays a localised message.
+    """
+    mock_client.fetch.side_effect = EauxDeMarseilleApiError("portal 500")
 
     coordinator = EauxDeMarseilleCoordinator(hass, mock_client)
     await coordinator.async_refresh()
 
     assert coordinator.last_update_success is False
+    assert coordinator.last_exception is not None
+    assert coordinator.last_exception.translation_domain == DOMAIN
+    assert coordinator.last_exception.translation_key == "update_failed"
+    assert coordinator.last_exception.translation_placeholders == {"error": "portal 500"}

@@ -64,5 +64,13 @@
       "title": "Historical statistics import failed",
       "description": "Eaux de Marseille could not import the historical monthly consumption for contract {contract_id}. The integration keeps polling normally and the issue will clear automatically on the next successful import. If the issue persists, check the Home Assistant logs for the underlying error and use the link below to open a bug report."
     }
+  },
+  "exceptions": {
+    "auth_failed": {
+      "message": "Authentication with the portal failed: {error}"
+    },
+    "update_failed": {
+      "message": "Failed to fetch consumption data from the portal: {error}"
+    }
   }
 }

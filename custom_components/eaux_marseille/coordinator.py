@@ -41,6 +41,14 @@ class EauxDeMarseilleCoordinator(DataUpdateCoordinator[ConsumptionData]):
         except EauxDeMarseilleAuthError as err:
             # Triggers Home Assistant's reauth flow so the user can re-enter
             # their password without having to delete and recreate the entry.
-            raise ConfigEntryAuthFailed(f"Authentication error: {err}") from err
+            raise ConfigEntryAuthFailed(
+                translation_domain=DOMAIN,
+                translation_key="auth_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
         except EauxDeMarseilleApiError as err:
-            raise UpdateFailed(f"API error: {err}") from err
+            raise UpdateFailed(
+                translation_domain=DOMAIN,
+                translation_key="update_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
