@@ -51,16 +51,16 @@ rules:
     status: exempt
     comment: |
       This is a cloud-polling integration with no discoverable endpoints.
-  docs-data-update: todo
-  docs-examples: todo
-  docs-known-limitations: todo
+  docs-data-update: done
+  docs-examples: done
+  docs-known-limitations: done
   docs-supported-devices:
     status: exempt
     comment: |
       The integration manages a customer portal account, not physical devices.
   docs-supported-functions: done
   docs-troubleshooting: done
-  docs-use-cases: todo
+  docs-use-cases: done
   dynamic-devices:
     status: exempt
     comment: |

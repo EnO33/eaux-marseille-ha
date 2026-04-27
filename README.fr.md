@@ -53,6 +53,74 @@ L'intégration récupère votre consommation d'eau depuis le portail choisi tout
 
 Une **statistique externe mensuelle** est également importée sous l'identifiant `eaux_marseille:monthly_consumption_<contrat>` — utilisable dans les cartes `statistics-graph` et le tableau de bord Énergie.
 
+## Cas d'usage
+
+### Suivre l'eau dans le tableau de bord Énergie
+
+L'usage le plus courant. Une fois l'intégration configurée :
+
+1. Allez dans **Paramètres → Tableaux de bord → Énergie**
+2. Ajoutez une **Source d'eau** dans le bloc Consommation d'eau
+3. Choisissez la statistique importée `eaux_marseille:monthly_consumption_<contrat>`
+4. Vous pouvez optionnellement renseigner un prix au m³ pour suivre le coût
+
+Vous obtiendrez l'historique mensuel (depuis 2024) et le mois en cours en temps réel, côte à côte avec l'électricité et le gaz si vous les suivez aussi.
+
+### Alerte sur la consommation mensuelle
+
+Déclenche une notification quand le mois en cours dépasse votre moyenne. Exemple d'automatisation :
+
+```yaml
+alias: "Eau : consommation mensuelle au-dessus de la moyenne"
+trigger:
+  - platform: numeric_state
+    entity_id: sensor.eaux_de_marseille_<contrat>_mois_en_cours
+    above: 12  # à ajuster selon votre consommation mensuelle typique en m³
+action:
+  - service: notify.mobile_app_<votre_telephone>
+    data:
+      title: "Alerte eau"
+      message: >-
+        La consommation mensuelle est de {{ states('sensor.eaux_de_marseille_<contrat>_mois_en_cours') }} m³,
+        au-dessus du seuil de {{ 12 }} m³.
+```
+
+### Consommation du jour
+
+Le portail n'expose pas la consommation journalière directement, mais vous pouvez la dériver de l'index du compteur. Exemple de capteur template dans `configuration.yaml` :
+
+```yaml
+template:
+  - sensor:
+      - name: "Consommation eau aujourd'hui"
+        unit_of_measurement: "L"
+        device_class: water
+        state_class: total_increasing
+        state: >-
+          {% set now = states('sensor.eaux_de_marseille_<contrat>_index_compteur') | float(0) %}
+          {% set start = states.sensor.eaux_de_marseille_<contrat>_index_compteur.attributes.last_changed | as_local %}
+          {{ ((now - start) * 1000) | round(0) }}
+```
+
+(À remettre à 0 à minuit via une automatisation quotidienne qui sauvegarde l'index de la veille.)
+
+### Graphique de tendance long terme
+
+Ajoutez une carte `statistics-graph` sur un dashboard :
+
+```yaml
+type: statistics-graph
+title: Consommation d'eau (mensuelle)
+entities:
+  - eaux_marseille:monthly_consumption_<contrat>
+period: month
+stat_types:
+  - sum
+days_to_show: 365
+```
+
+Cette carte lit directement la statistique externe importée — pas besoin de capteur template séparé.
+
 ## Prérequis
 
 - Home Assistant 2025.4 ou plus récent
@@ -97,9 +165,27 @@ L'intégration vérifie les identifiants, puis crée l'appareil et ses capteurs.
 
 La combinaison *(fournisseur + numéro de contrat)* sert d'identifiant unique pour l'entrée de configuration — vous ne pouvez pas ajouter deux fois le même contrat sur le même portail.
 
+### Mise à jour des données
+
+L'intégration interroge le portail client **une fois par heure**. Cet intervalle est volontairement conservateur : les données du portail elles-mêmes sont mises à jour peu fréquemment (la plupart des compteurs télérelèvent une à deux fois par jour, les relevés facturés sont mensuels), donc un polling plus rapide ne ferait que solliciter le portail sans rien apporter de nouveau.
+
+Au premier ajout, l'intégration lance également un **import historique** des consommations mensuelles depuis janvier 2024, en arrière-plan. Aux redémarrages suivants, ce qui est déjà en base est conservé et seule l'année courante est rafraîchie — le coût de l'import historique est payé une seule fois.
+
+L'authentification réutilise un token de session mis en cache entre les polls (depuis v1.12.0). Le handshake complet en 5 étapes contre le portail n'est rejoué qu'au démarrage, ou quand le portail renvoie 401/403 (token expiré). En régime nominal la charge sur le portail est de 3 requêtes HTTP par heure et par contrat.
+
+Si un poll échoue — portail KO, panne réseau, etc. — Home Assistant retentera à l'heure suivante et le capteur sera marqué `indisponible` en attendant le prochain succès.
+
 ### Réauthentification
 
 Si vous changez votre mot de passe du portail, Home Assistant détectera l'échec d'authentification au prochain cycle de polling (≤ 1 heure) et affichera une notification. Cliquez dessus pour saisir le nouveau mot de passe — l'intégration conserve le contrat, les capteurs et les statistiques historiques.
+
+### Reconfiguration
+
+Si vous devez changer l'adresse e-mail, le numéro de contrat ou même le fournisseur d'eau (par exemple un déménagement) sans perdre l'historique des capteurs ni les statistiques importées :
+
+1. **Paramètres → Appareils et services → Eaux de Marseille → menu ⋮ → Reconfigurer**
+2. Modifiez les champs souhaités ; le mot de passe est obligatoire (le même que sur le portail)
+3. Validez — l'intégration vérifie les nouveaux identifiants et recharge l'entrée en place
 
 ### Plusieurs contrats
 
@@ -166,6 +252,32 @@ Cette intégration manipule vos identifiants du portail. En interne :
 - Les redirections HTTP sont validées contre le nom d'hôte du portail — toute redirection hors du portail est refusée pour empêcher la fuite d'identifiants (protection contre les attaques de type CVE-2018-18074)
 - Les downgrades HTTPS→HTTP sont refusés
 - Toutes les requêtes API utilisent TLS
+
+## Limitations connues
+
+### Pas de données en temps réel
+
+Les compteurs d'eau télérelèvent une à deux fois par jour, et le portail client agrège ces données. Il n'y a pas d'équivalent du relevé instantané d'un compteur électrique communicant — la valeur la plus fraîche que vous verrez correspond à la veille. L'intervalle de polling d'1 heure reflète le rythme de mise à jour du portail, pas une contrainte de l'intégration.
+
+### Les credentials applicatifs peuvent changer sans préavis
+
+L'intégration imite le bundle JavaScript du portail, y compris les `ClientId` et `AccessKey` statiques qu'il embarque. SOMEI/Veolia peut les renouveler à n'importe quel moment sans avertissement, auquel cas l'authentification commencera à échouer et une nouvelle release de l'intégration sera nécessaire avec les nouvelles clés. Si vous voyez `Token generation failed` après une configuration auparavant fonctionnelle, c'est la cause la plus probable — merci [d'ouvrir une issue](https://github.com/EnO33/eaux-marseille-ha/issues) pour qu'on mette les constantes à jour.
+
+### Le découpage territorial entre fournisseurs peut évoluer
+
+La liste des communes desservies par chaque fournisseur (SEM, SEMM, Vivaigo) est définie par leurs contrats de délégation de service public et est réorganisée occasionnellement. La documentation reflète la situation au moment de la release ; si vous habitez dans une commune qui vient de changer de fournisseur, il suffit de choisir le nouveau dans la liste déroulante — l'API du portail sous-jacente est partagée.
+
+### Un seul contrat par entrée
+
+Chaque entrée d'intégration gère un seul contrat. Si vous avez plusieurs contrats (résidence principale + secondaire par exemple), ajoutez l'intégration une fois par contrat — chacun apparaît comme un appareil séparé avec son propre historique.
+
+### L'historique commence en 2024
+
+L'import historique des statistiques remonte à janvier 2024 seulement. Les données antérieures ne sont pas exposées par le portail dans le format que l'intégration utilise pour le recorder.
+
+### Le suivi du coût dans le tableau de bord Énergie est un tarif unitaire fixe
+
+Le tableau de bord Énergie de Home Assistant prend un seul prix au m³ pour calculer le coût. Les vraies factures d'eau incluent un abonnement fixe et une tarification par tranches — le tableau de bord ne sait pas modéliser cela, donc le coût affiché est une approximation.
 
 ## Avertissement
 
