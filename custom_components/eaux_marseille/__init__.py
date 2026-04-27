@@ -9,9 +9,10 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, EVENT_HOMEASSISTANT_STARTED, Platform
 from homeassistant.core import Event, HomeAssistant
+from homeassistant.helpers import config_validation as cv
 
 from .api import EauxDeMarseilleClient
-from .const import CONF_CONTRACT_ID, CONF_PROVIDER, DEFAULT_PROVIDER, Provider
+from .const import CONF_CONTRACT_ID, CONF_PROVIDER, DEFAULT_PROVIDER, DOMAIN, Provider
 from .coordinator import EauxDeMarseilleCoordinator
 from .services import async_register_services
 from .statistics import async_import_historical_statistics
@@ -19,6 +20,11 @@ from .statistics import async_import_historical_statistics
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
+
+# We are a config-entry-only integration: there is no YAML schema, the
+# user configures us via the UI. Hassfest requires this declaration as
+# soon as ``async_setup`` is defined (added when we registered services).
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 @dataclass
