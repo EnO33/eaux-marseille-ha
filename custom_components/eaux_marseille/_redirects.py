@@ -95,7 +95,11 @@ async def _validated_target(
             f"Body starts with: {body[:200]!r}"
         )
     target = URL(url).join(URL(location))
-    if target.host != allowed_host:
+    # Hostnames are case-insensitive (RFC 3986 §3.2.2). yarl already
+    # normalises to lowercase today, but lowering both sides explicitly
+    # protects future callers passing a capitalised ``allowed_host``.
+    target_host = (target.host or "").lower()
+    if target_host != allowed_host.lower():
         raise EauxDeMarseilleApiError(
             f"Refusing to follow {response.status} redirect to off-portal "
             f"host {target.host!r} (from {url})"
