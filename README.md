@@ -55,7 +55,7 @@ A **monthly external statistic** is also imported under the ID `eaux_marseille:m
 
 ## Requirements
 
-- Home Assistant 2024.1 or later
+- Home Assistant 2025.4 or later
 - An active account on one of the three customer portals (SEM, SEMM or Vivaigo)
 - Your contract number (visible on bills or in the portal URL after login)
 

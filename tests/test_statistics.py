@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
+from homeassistant.components.recorder.models import StatisticMeanType
 from homeassistant.core import HomeAssistant
 
 from custom_components.eaux_marseille.const import DOMAIN
@@ -77,7 +78,9 @@ async def test_import_creates_statistics(
     assert metadata["source"] == DOMAIN
     assert metadata["statistic_id"] == f"{DOMAIN}:monthly_consumption_{MOCK_CONTRACT_ID}"
     assert metadata["has_sum"] is True
-    assert metadata["has_mean"] is False
+    # has_mean=False was deprecated and removed in HA 2026.4 in favour of
+    # the typed StatisticMeanType.NONE (see issue #19).
+    assert metadata["mean_type"] == StatisticMeanType.NONE
 
     assert len(stats) == 3
     assert stats[0]["state"] == 3.0

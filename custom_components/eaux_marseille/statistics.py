@@ -14,7 +14,11 @@ from typing import Any
 # `get_instance` is the documented public helper but isn't re-exported
 # in __all__ on the recorder package, so mypy flags the import.
 from homeassistant.components.recorder import get_instance  # type: ignore[attr-defined]
-from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
+from homeassistant.components.recorder.models import (
+    StatisticData,
+    StatisticMeanType,
+    StatisticMetaData,
+)
 from homeassistant.components.recorder.statistics import (
     async_add_external_statistics,
     get_last_statistics,
@@ -159,12 +163,15 @@ def _entry_to_stat(
 
 
 def _build_metadata(contract_id: str, statistic_id: str) -> StatisticMetaData:
-    """Build the recorder metadata for the monthly-consumption statistic."""
-    # mean_type / unit_class were added to StatisticMetaData in newer
-    # HA versions but remain optional at runtime; skipping them keeps
-    # the integration compatible with older releases.
-    return StatisticMetaData(  # type: ignore[typeddict-item]
-        has_mean=False,
+    """Build the recorder metadata for the monthly-consumption statistic.
+
+    ``mean_type=StatisticMeanType.NONE`` is the canonical replacement for
+    the legacy ``has_mean=False`` flag (which HA core deprecated and
+    removed in 2026.4). Water consumption is a counter, so no mean is
+    recorded.
+    """
+    return StatisticMetaData(
+        mean_type=StatisticMeanType.NONE,
         has_sum=True,
         name=f"Eaux de Marseille {contract_id} — Monthly consumption",
         source=DOMAIN,
