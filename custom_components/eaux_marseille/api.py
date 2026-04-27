@@ -61,10 +61,7 @@ class EauxDeMarseilleClient:
         timeout: int = REQUEST_TIMEOUT_S,
         provider: Provider = DEFAULT_PROVIDER,
     ) -> None:
-        self._login = login
-        self._password = password
         self._contract_id = contract_id
-        self._provider = provider
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._owns_session = session is None
         # We deliberately use ThreadedResolver (socket.getaddrinfo via NSS)
@@ -82,7 +79,15 @@ class EauxDeMarseilleClient:
             timeout=self._timeout,
             connector=aiohttp.TCPConnector(resolver=aiohttp.ThreadedResolver()),
         )
-        self._auth = PortalAuth(self._session, self._timeout, provider)
+        # Credentials and provider live on PortalAuth, the only component
+        # that uses them. The client just orchestrates fetches.
+        self._auth = PortalAuth(
+            self._session,
+            self._timeout,
+            provider,
+            login=login,
+            password=password,
+        )
 
     async def close(self) -> None:
         """Close the underlying session if we own it."""
@@ -91,7 +96,7 @@ class EauxDeMarseilleClient:
 
     async def authenticate(self) -> None:
         """Run the full 5-step authentication flow against the portal."""
-        await self._auth.authenticate(self._login, self._password)
+        await self._auth.authenticate()
 
     async def fetch(self) -> ConsumptionData:
         """Fetch the three consumption endpoints and aggregate the result."""

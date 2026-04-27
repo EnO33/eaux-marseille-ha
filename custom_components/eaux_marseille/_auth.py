@@ -60,11 +60,17 @@ class PortalAuth:
         session: aiohttp.ClientSession,
         timeout: aiohttp.ClientTimeout,
         provider: Provider,
+        login: str,
+        password: str,
     ) -> None:
         self._session = session
         self._timeout = timeout
         self._endpoints: PortalEndpoints = PROVIDERS[provider]
         self._base_headers = headers_for(self._endpoints)
+        # User credentials live on the auth helper that actually uses them,
+        # rather than being duplicated on the higher-level client.
+        self._login = login
+        self._password = password
         # Two distinct tokens with very different lifetimes:
         # * ``_app_token`` is the short-lived bearer returned by
         #   ``/Acces/generateToken``; only used to authorise the login POST
@@ -81,7 +87,7 @@ class PortalAuth:
     # Public flow
     # ------------------------------------------------------------------
 
-    async def authenticate(self, login: str, password: str) -> None:
+    async def authenticate(self) -> None:
         """Run all 5 steps; ``self._ael_token`` holds the AEL session token."""
         _LOGGER.info("Authentication: step 1/5 (acquiring session cookie)")
         await self._step_landing()
@@ -90,7 +96,7 @@ class PortalAuth:
         temp_token = await self._step_generate_token()
 
         _LOGGER.info("Authentication: step 3/5 (logging in user)")
-        ael_token, user_info = await self._step_login(login, password, temp_token)
+        ael_token, user_info = await self._step_login(temp_token)
 
         _LOGGER.info("Authentication: step 4/5 (fetching default contract)")
         contract = await self._step_default_contract()
@@ -170,8 +176,6 @@ class PortalAuth:
 
     async def _step_login(
         self,
-        login: str,
-        password: str,
         temp_token: str,
     ) -> tuple[str, dict[str, Any]]:
         # The login POST itself must carry the short-lived app token in
@@ -181,7 +185,7 @@ class PortalAuth:
         data = await self._auth_call(
             "POST",
             "/Utilisateur/authentification",
-            json_payload={"identifiant": login, "motDePasse": password},
+            json_payload={"identifiant": self._login, "motDePasse": self._password},
             require_field="tokenAuthentique",
             error_prefix="Login failed",
         )
