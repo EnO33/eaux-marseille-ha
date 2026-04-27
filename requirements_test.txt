@@ -1,14 +1,11 @@
-# pytest and pytest-cov are constrained by pytest-homeassistant-custom-component
-# 0.13.316 (the last 3.13-compatible release): it pins both to exact versions.
-# Once we move to 3.14 in CI we can relax these back to ranges.
-pytest==9.0.0
-pytest-cov==7.0.0
+# pytest-homeassistant-custom-component pins pytest, pytest-cov and
+# pytest-asyncio internally; we keep them in this file as version floors
+# so pip rejects any environment where the security CVE patches haven't
+# landed (e.g. CVE-2025-71176 on pytest 9.0.0-9.0.2).
+pytest>=9.0.3
+pytest-cov>=7.0.0
 pytest-asyncio>=1.3.0
-# Pinned to the last release that supports Python 3.13. Newer versions
-# require Python 3.14, which doesn't yet have wheels for our other test
-# dependencies on Linux runners. Dependabot is configured to ignore
-# bumps on this package (see .github/dependabot.yml).
-pytest-homeassistant-custom-component==0.13.316
+pytest-homeassistant-custom-component>=0.13.317
 aioresponses>=0.7.8
 
 # Runtime dependencies declared in custom_components/eaux_marseille/manifest.json.

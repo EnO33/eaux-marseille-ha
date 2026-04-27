@@ -37,16 +37,3 @@ updates:
         applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
-    ignore:
-      # Versions >=0.13.317 require Python 3.14, which doesn't yet have
-      # full wheel coverage on Linux CI runners. Stay on the last 3.13-
-      # compatible release until Python 3.14 has a stable ecosystem.
-      - dependency-name: "pytest-homeassistant-custom-component"
-        versions: [">=0.13.317"]
-      # pytest-homeassistant-custom-component 0.13.316 depends on
-      # pytest==9.0.0 and pytest-cov==7.0.0 (strict equality), so we
-      # cannot bump either until we move past 0.13.316.
-      - dependency-name: "pytest"
-        versions: [">9.0.0"]
-      - dependency-name: "pytest-cov"
-        versions: [">7.0.0"]

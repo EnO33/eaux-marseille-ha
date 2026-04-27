@@ -32,9 +32,9 @@ pip install -r requirements_test.txt
 python -m pytest tests/
 ```
 
-You should see `49 passed`. If you see skips, your environment didn't pick up `pytest-homeassistant-custom-component`; double-check the install.
+You should see all 64 tests pass. If you see skips, your environment didn't pick up `pytest-homeassistant-custom-component`; double-check the install.
 
-The pinned versions in `requirements_test.txt` are constrained by `pytest-homeassistant-custom-component` 0.13.316 (the last release that supports Python 3.13). Don't relax the pins without coordinating — see the `dependabot.yml` ignore list and the comments in the file.
+The CI runs on **Python 3.14** (the version Home Assistant 2026.x ships). Local runs on 3.13 will work for the API-only tests but `requirements_test.txt` resolves to packages that require 3.14, so the full suite needs 3.14 too.
 
 ## Style and quality gates
 
