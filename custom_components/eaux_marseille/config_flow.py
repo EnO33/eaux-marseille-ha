@@ -164,3 +164,61 @@ class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call
             },
             errors=errors,
         )
+
+    # ------------------------------------------------------------------
+    # Reconfiguration flow (Settings -> Devices -> [...] -> Reconfigure)
+    # ------------------------------------------------------------------
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Allow the user to change email, contract or provider in place.
+
+        Useful when the email on the portal changes, or when the user
+        notices a typo in their contract id, without forcing them to
+        delete the entry (which would lose all sensor and statistics
+        history attached to the device).
+        """
+        entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            provider = Provider(user_input[CONF_PROVIDER])
+            # If the provider/contract pair changed, make sure another
+            # entry isn't already using the new identity.
+            await self.async_set_unique_id(f"{provider.value}_{user_input[CONF_CONTRACT_ID]}")
+            self._abort_if_unique_id_mismatch(reason="reconfigure_unique_id_mismatch")
+
+            error = await _validate_credentials(
+                username=user_input[CONF_USERNAME],
+                password=user_input[CONF_PASSWORD],
+                contract_id=user_input[CONF_CONTRACT_ID],
+                provider=provider,
+            )
+            if error is None:
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data=user_input,
+                    title=f"Contrat {user_input[CONF_CONTRACT_ID]}",
+                )
+            errors["base"] = error
+
+        # Pre-fill the form with the current values so the user only
+        # edits what they want to change.
+        current = entry.data
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_PROVIDER,
+                    default=current.get(CONF_PROVIDER, DEFAULT_PROVIDER.value),
+                ): vol.In({p.value: label for p, label in _PROVIDER_LABELS.items()}),
+                vol.Required(CONF_USERNAME, default=current[CONF_USERNAME]): str,
+                vol.Required(CONF_PASSWORD): str,
+                vol.Required(CONF_CONTRACT_ID, default=current[CONF_CONTRACT_ID]): str,
+            }
+        )
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=schema,
+            errors=errors,
+        )

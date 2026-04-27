@@ -49,11 +49,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: EauxDeMarseilleConfigEnt
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    # async_import_historical_statistics handles its own errors and
+    # surfaces them as HA repair issues; no need to wrap a second time.
     async def _run_import(_event: Event | None = None) -> None:
-        try:
-            await async_import_historical_statistics(hass, client, entry.data[CONF_CONTRACT_ID])
-        except Exception:
-            _LOGGER.exception("Failed to import historical statistics")
+        await async_import_historical_statistics(hass, client, entry.data[CONF_CONTRACT_ID])
 
     if hass.is_running:
         hass.async_create_task(_run_import())

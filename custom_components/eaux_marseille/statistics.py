@@ -25,6 +25,7 @@ from homeassistant.components.recorder.statistics import (
 )
 from homeassistant.const import UnitOfVolume
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import issue_registry as ir
 
 from .api import EauxDeMarseilleClient
 from .const import DOMAIN
@@ -32,6 +33,7 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 _START_YEAR = 2024
+_ISSUE_STATS_IMPORT_FAILED = "statistics_import_failed_{contract_id}"
 
 
 async def async_import_historical_statistics(
@@ -39,7 +41,13 @@ async def async_import_historical_statistics(
     client: EauxDeMarseilleClient,
     contract_id: str,
 ) -> None:
-    """Import the available monthly statistics into the HA recorder."""
+    """Import the available monthly statistics into the HA recorder.
+
+    Failures surface as a HA repair issue (Settings -> Repairs) so the
+    user gets actionable feedback instead of a silent log line. A
+    previously raised issue is cleared on the next successful run.
+    """
+    issue_id = _ISSUE_STATS_IMPORT_FAILED.format(contract_id=contract_id)
     try:
         # Recorder may not be ready yet at HACS startup time.
         instance = get_instance(hass)
@@ -55,23 +63,33 @@ async def async_import_historical_statistics(
         )
 
         stats = await _collect_new_stats(client, last_ts, running_sum)
-        if not stats:
+        if stats:
+            async_add_external_statistics(hass, _build_metadata(contract_id, statistic_id), stats)
+            _LOGGER.info(
+                "Imported %d monthly statistics for contract %s (total sum: %s m³)",
+                len(stats),
+                contract_id,
+                stats[-1]["sum"],
+            )
+        else:
             _LOGGER.debug(
                 "No new historical statistics to import for contract %s",
                 contract_id,
             )
-            return
-
-        async_add_external_statistics(hass, _build_metadata(contract_id, statistic_id), stats)
-        _LOGGER.info(
-            "Imported %d monthly statistics for contract %s (total sum: %s m³)",
-            len(stats),
-            contract_id,
-            stats[-1]["sum"],
-        )
     except Exception:
         _LOGGER.exception("Error during historical statistics import")
-        raise
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            issue_id,
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="statistics_import_failed",
+            translation_placeholders={"contract_id": contract_id},
+        )
+        return
+    # On success, clear any previously raised repair issue.
+    ir.async_delete_issue(hass, DOMAIN, issue_id)
 
 
 async def _load_last_imported(

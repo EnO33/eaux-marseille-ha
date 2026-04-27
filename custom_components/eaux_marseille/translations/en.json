@@ -20,6 +20,16 @@
         "data": {
           "password": "Password"
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Eaux de Marseille",
+        "description": "Update the email, password, contract number or utility for this entry. Sensor history and imported statistics are preserved.",
+        "data": {
+          "provider": "Water utility",
+          "username": "Email address",
+          "password": "Password",
+          "contract_id": "Contract number"
+        }
       }
     },
     "error": {
@@ -28,7 +38,9 @@
     },
     "abort": {
       "already_configured": "This contract is already configured.",
-      "reauth_successful": "Re-authentication was successful."
+      "reauth_successful": "Re-authentication was successful.",
+      "reconfigure_successful": "Reconfiguration was successful.",
+      "reconfigure_unique_id_mismatch": "Another entry already exists for this contract on this utility. Remove it before reconfiguring."
     }
   },
   "entity": {
@@ -45,6 +57,12 @@
       "previous_reading_m3": { "name": "Previous reading" },
       "previous_reading_date": { "name": "Previous reading date" },
       "total_readings": { "name": "Total readings" }
+    }
+  },
+  "issues": {
+    "statistics_import_failed": {
+      "title": "Historical statistics import failed",
+      "description": "Eaux de Marseille could not import the historical monthly consumption for contract {contract_id}. The integration keeps polling normally and the issue will clear automatically on the next successful import. If it persists, check the Home Assistant logs for the underlying error and consider opening a bug report at https://github.com/EnO33/eaux-marseille-ha/issues."
     }
   }
 }

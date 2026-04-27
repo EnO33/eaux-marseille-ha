@@ -20,6 +20,16 @@
         "data": {
           "password": "Mot de passe"
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigurer Eaux de Marseille",
+        "description": "Modifiez l'e-mail, le mot de passe, le numéro de contrat ou le fournisseur de cette entrée. L'historique des capteurs et les statistiques importées sont préservés.",
+        "data": {
+          "provider": "Fournisseur d'eau",
+          "username": "Adresse e-mail",
+          "password": "Mot de passe",
+          "contract_id": "Numéro de contrat"
+        }
       }
     },
     "error": {
@@ -28,7 +38,9 @@
     },
     "abort": {
       "already_configured": "Ce contrat est déjà configuré.",
-      "reauth_successful": "La réauthentification a réussi."
+      "reauth_successful": "La réauthentification a réussi.",
+      "reconfigure_successful": "La reconfiguration a réussi.",
+      "reconfigure_unique_id_mismatch": "Une autre entrée existe déjà pour ce contrat sur ce fournisseur. Supprimez-la avant de reconfigurer."
     }
   },
   "entity": {
@@ -45,6 +57,12 @@
       "previous_reading_m3": { "name": "Relevé précédent" },
       "previous_reading_date": { "name": "Date du relevé précédent" },
       "total_readings": { "name": "Nombre de relevés" }
+    }
+  },
+  "issues": {
+    "statistics_import_failed": {
+      "title": "Échec de l'import des statistiques historiques",
+      "description": "Eaux de Marseille n'a pas pu importer la consommation mensuelle historique pour le contrat {contract_id}. L'intégration continue de fonctionner normalement et le problème disparaîtra automatiquement au prochain import réussi. Si le problème persiste, consultez les logs Home Assistant pour l'erreur sous-jacente et envisagez d'ouvrir un ticket sur https://github.com/EnO33/eaux-marseille-ha/issues."
     }
   }
 }
