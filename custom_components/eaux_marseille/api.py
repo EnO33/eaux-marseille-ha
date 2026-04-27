@@ -11,8 +11,10 @@ The auth flow lives in :mod:`._auth`, the HTTP transport in
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, TypeVar
 
 import aiohttp
 
@@ -39,6 +41,9 @@ __all__ = [
     "EauxDeMarseilleError",
     "EauxDeMarseilleSessionExpiredError",
 ]
+
+_LOGGER = logging.getLogger(__name__)
+_T = TypeVar("_T")
 
 
 class EauxDeMarseilleClient:
@@ -97,11 +102,33 @@ class EauxDeMarseilleClient:
             await self._session.close()
 
     async def authenticate(self) -> None:
-        """Run the full 5-step authentication flow against the portal."""
+        """Ensure a portal session is established.
+
+        Idempotent: returns immediately if a long-lived AEL token is
+        already cached. Callers that want to force a fresh handshake
+        (e.g. on a config-flow validate) should call
+        ``self._auth.invalidate()`` first or just let
+        :meth:`fetch` recover from the inevitable 401.
+        """
+        if self._auth.is_authenticated:
+            return
         await self._auth.authenticate()
 
     async def fetch(self) -> ConsumptionData:
-        """Fetch the three consumption endpoints and aggregate the result."""
+        """Fetch the three consumption endpoints and aggregate the result.
+
+        Reuses the cached AEL session token across calls and
+        transparently re-authenticates once if the portal returns 401/403
+        (token expired). Net effect: 3 requests/poll in the steady state
+        instead of 5 auth + 3 fetch.
+        """
+        return await self._with_session_recovery(self._fetch_inner)
+
+    async def fetch_monthly_range(self, year: int) -> list[dict[str, Any]]:
+        """Return the raw monthly consumption entries for ``year``."""
+        return await self._with_session_recovery(lambda: self._fetch_monthly_inner(year))
+
+    async def _fetch_inner(self) -> ConsumptionData:
         last = await self._auth.get(
             f"/TableauDeBord/derniereConsommationFacturee/{self._contract_id}"
         )
@@ -111,11 +138,32 @@ class EauxDeMarseilleClient:
         )
         return ConsumptionData.from_api_responses(last, monthly, history)
 
-    async def fetch_monthly_range(self, year: int) -> list[dict[str, Any]]:
-        """Return the raw monthly consumption entries for ``year``."""
+    async def _fetch_monthly_inner(self, year: int) -> list[dict[str, Any]]:
         data = await self._auth.get(self._monthly_path(year))
         entries: list[dict[str, Any]] = data.get("consommations", [])
         return entries
+
+    async def _with_session_recovery(
+        self,
+        action: Callable[[], Awaitable[_T]],
+    ) -> _T:
+        """Run ``action`` under a guaranteed portal session.
+
+        * Authenticates first if no AEL token is cached.
+        * On :class:`EauxDeMarseilleSessionExpiredError`, invalidates the
+          cache, re-authenticates once, and retries the action.
+        * Any other error (auth failure, transport, 5xx after retries)
+          propagates unchanged.
+        """
+        if not self._auth.is_authenticated:
+            await self._auth.authenticate()
+        try:
+            return await action()
+        except EauxDeMarseilleSessionExpiredError as err:
+            _LOGGER.info("Portal session expired (%s); re-authenticating", err)
+            self._auth.invalidate()
+            await self._auth.authenticate()
+            return await action()
 
     def _monthly_path(self, year: int) -> str:
         """Build the monthly consumption endpoint path for ``year``."""

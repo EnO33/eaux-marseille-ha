@@ -20,6 +20,7 @@ from custom_components.eaux_marseille.api import (
     EauxDeMarseilleApiError,
     EauxDeMarseilleAuthError,
     EauxDeMarseilleClient,
+    EauxDeMarseilleSessionExpiredError,
 )
 from custom_components.eaux_marseille.const import PROVIDERS, Provider
 from custom_components.eaux_marseille.diagnostics import _scrub_exception
@@ -452,6 +453,168 @@ class TestFetch:
         await client.authenticate()
         with pytest.raises(EauxDeMarseilleApiError):
             await client.fetch()
+
+
+class TestSessionRecovery:
+    """Test that the client caches auth and recovers from session expiry."""
+
+    async def test_authenticate_is_idempotent(
+        self, client: EauxDeMarseilleClient, mock_auth: aioresponses
+    ) -> None:
+        """The second authenticate() call short-circuits when already auth'd."""
+        await client.authenticate()
+        assert client._auth.is_authenticated
+
+        # mock_auth registers each auth endpoint ONCE. A second full auth
+        # would 404 on the unregistered second hit. The fact that this
+        # succeeds without aioresponses raising proves we didn't replay.
+        await client.authenticate()
+        assert client._auth.is_authenticated
+
+    async def test_fetch_skips_redundant_auth(
+        self, client: EauxDeMarseilleClient, mock_auth: aioresponses
+    ) -> None:
+        """Two consecutive fetches share one auth (unless 401 happens)."""
+        mock_auth.get(
+            f"{_API_BASE}/TableauDeBord/derniereConsommationFacturee/{CONTRACT_ID}",
+            payload={"valeurIndex": 1.0, "volumeConsoEnM3": 1.0},
+            repeat=True,
+        )
+        mock_auth.get(
+            re.compile(r".*listeConsommationsInstanceAlerteChart.*"),
+            payload={"consommations": []},
+            repeat=True,
+        )
+        mock_auth.get(
+            f"{_API_BASE}/Facturation/listeConsommationsFacturees/{CONTRACT_ID}",
+            payload={"nbTotalResultats": 0, "resultats": []},
+            repeat=True,
+        )
+
+        await client.fetch()
+        await client.fetch()
+        # If a re-auth had been triggered between the two fetches the
+        # mock_auth fixture (single-shot endpoints) would have raised.
+
+    async def test_fetch_recovers_from_401(self, client: EauxDeMarseilleClient) -> None:
+        """A 401 on the first fetch triggers transparent re-auth + retry."""
+        with aioresponses() as m:
+            # ---- First auth flow ----
+            _register_auth_flow(m)
+            # ---- First fetch: 401 on the very first call ----
+            m.get(
+                f"{_API_BASE}/TableauDeBord/derniereConsommationFacturee/{CONTRACT_ID}",
+                status=401,
+                body="session expired",
+            )
+            # ---- Second auth flow (recovery) ----
+            _register_auth_flow(m)
+            # ---- Second fetch: succeeds ----
+            m.get(
+                f"{_API_BASE}/TableauDeBord/derniereConsommationFacturee/{CONTRACT_ID}",
+                payload={"valeurIndex": 42.0, "volumeConsoEnM3": 1.0},
+            )
+            m.get(
+                re.compile(r".*listeConsommationsInstanceAlerteChart.*"),
+                payload={"consommations": []},
+            )
+            m.get(
+                f"{_API_BASE}/Facturation/listeConsommationsFacturees/{CONTRACT_ID}",
+                payload={"nbTotalResultats": 0, "resultats": []},
+            )
+
+            data = await client.fetch()
+            assert data.index_m3 == 42.0
+
+    async def test_403_also_triggers_recovery(self, client: EauxDeMarseilleClient) -> None:
+        """403 is treated like 401 for the purpose of session recovery."""
+        with aioresponses() as m:
+            _register_auth_flow(m)
+            m.get(
+                f"{_API_BASE}/TableauDeBord/derniereConsommationFacturee/{CONTRACT_ID}",
+                status=403,
+                body="forbidden",
+            )
+            _register_auth_flow(m)
+            m.get(
+                f"{_API_BASE}/TableauDeBord/derniereConsommationFacturee/{CONTRACT_ID}",
+                payload={"valeurIndex": 42.0, "volumeConsoEnM3": 1.0},
+            )
+            m.get(
+                re.compile(r".*listeConsommationsInstanceAlerteChart.*"),
+                payload={"consommations": []},
+            )
+            m.get(
+                f"{_API_BASE}/Facturation/listeConsommationsFacturees/{CONTRACT_ID}",
+                payload={"nbTotalResultats": 0, "resultats": []},
+            )
+
+            data = await client.fetch()
+            assert data.index_m3 == 42.0
+
+    async def test_repeated_session_expiry_propagates(self, client: EauxDeMarseilleClient) -> None:
+        """If the retry also gets 401, surface the failure (no infinite loop)."""
+        with aioresponses() as m:
+            _register_auth_flow(m)
+            # First fetch: 401
+            m.get(
+                f"{_API_BASE}/TableauDeBord/derniereConsommationFacturee/{CONTRACT_ID}",
+                status=401,
+            )
+            # Recovery auth
+            _register_auth_flow(m)
+            # Retry fetch: 401 again -> we give up
+            m.get(
+                f"{_API_BASE}/TableauDeBord/derniereConsommationFacturee/{CONTRACT_ID}",
+                status=401,
+            )
+
+            with pytest.raises(EauxDeMarseilleSessionExpiredError):
+                await client.fetch()
+
+    async def test_other_4xx_does_not_trigger_reauth(
+        self, client: EauxDeMarseilleClient, mock_auth: aioresponses
+    ) -> None:
+        """A 404 must NOT trigger re-auth (would mask real bugs)."""
+        mock_auth.get(
+            f"{_API_BASE}/TableauDeBord/derniereConsommationFacturee/{CONTRACT_ID}",
+            status=404,
+        )
+        # mock_auth only registers ONE auth flow. If we ever re-auth on a
+        # non-401, the test would fail because the second auth would 404
+        # and produce a different (auth) error.
+        with pytest.raises(EauxDeMarseilleApiError) as excinfo:
+            await client.fetch()
+        assert not isinstance(excinfo.value, EauxDeMarseilleSessionExpiredError)
+
+
+def _register_auth_flow(m: aioresponses) -> None:
+    """Register the four endpoints of one full auth flow."""
+    m.get(_PORTAL_URL + "/", body="<html></html>")
+    m.post(
+        f"{_API_BASE}/Acces/generateToken",
+        payload={"token": "fake-temp-token"},
+    )
+    m.post(
+        f"{_API_BASE}/Utilisateur/authentification",
+        payload={
+            "tokenAuthentique": "fake-ael-token",
+            "utilisateurInfo": {
+                "identifiant": "user@example.com",
+                "nom": "Doe",
+                "prenom": "John",
+                "email": "user@example.com",
+                "titre": "M.",
+                "userWebId": 42,
+                "meta": {},
+                "profils": [],
+            },
+        },
+    )
+    m.get(
+        f"{_API_BASE}/Abonnement/getContratParDefaut/",
+        payload={"numContrat": CONTRACT_ID},
+    )
 
 
 class TestFetchMonthlyRange:

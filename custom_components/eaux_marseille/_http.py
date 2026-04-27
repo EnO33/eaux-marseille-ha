@@ -142,9 +142,7 @@ async def _raise_for_status(response: aiohttp.ClientResponse, url: str) -> None:
     """
     if response.status in (401, 403):
         text = await response.text()
-        raise EauxDeMarseilleSessionExpiredError(
-            f"HTTP {response.status} at {url}: {text[:200]}"
-        )
+        raise EauxDeMarseilleSessionExpiredError(f"HTTP {response.status} at {url}: {text[:200]}")
     if 400 <= response.status < 500:
         text = await response.text()
         raise EauxDeMarseilleApiError(f"HTTP {response.status} at {url}: {text[:200]}")
