@@ -168,13 +168,16 @@ def _build_metadata(contract_id: str, statistic_id: str) -> StatisticMetaData:
     ``mean_type=StatisticMeanType.NONE`` is the canonical replacement for
     the legacy ``has_mean=False`` flag (which HA core deprecated and
     removed in 2026.4). Water consumption is a counter, so no mean is
-    recorded.
+    recorded. ``unit_class=None`` lets HA derive the unit class from
+    ``unit_of_measurement``.
     """
-    return StatisticMetaData(
-        mean_type=StatisticMeanType.NONE,
-        has_sum=True,
-        name=f"Eaux de Marseille {contract_id} — Monthly consumption",
-        source=DOMAIN,
-        statistic_id=statistic_id,
-        unit_of_measurement=UnitOfVolume.CUBIC_METERS,
-    )
+    metadata: StatisticMetaData = {
+        "mean_type": StatisticMeanType.NONE,
+        "has_sum": True,
+        "name": f"Eaux de Marseille {contract_id} — Monthly consumption",
+        "source": DOMAIN,
+        "statistic_id": statistic_id,
+        "unit_class": None,
+        "unit_of_measurement": UnitOfVolume.CUBIC_METERS,
+    }
+    return metadata
