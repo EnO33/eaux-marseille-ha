@@ -3,7 +3,7 @@
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Release](https://img.shields.io/github/v/release/EnO33/eaux-marseille-ha)](https://github.com/EnO33/eaux-marseille-ha/releases)
 [![Tests](https://github.com/EnO33/eaux-marseille-ha/actions/workflows/tests.yml/badge.svg)](https://github.com/EnO33/eaux-marseille-ha/actions/workflows/tests.yml)
-[![Niveau de qualité : silver](https://img.shields.io/badge/quality--scale-silver-silver.svg)](https://developers.home-assistant.io/docs/core/integration-quality-scale)
+[![Niveau de qualité : gold](https://img.shields.io/badge/quality--scale-gold-yellow.svg)](https://developers.home-assistant.io/docs/core/integration-quality-scale)
 [![Licence : MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 🇬🇧 [Read in English](README.md)
@@ -32,7 +32,7 @@ L'intégration récupère votre consommation d'eau depuis le portail choisi tout
 - Flux de réauthentification quand le mot de passe du portail change — plus besoin de supprimer/recréer l'intégration
 - Sécurisé : redirections cross-origin refusées (protection contre les fuites de type CVE-2018-18074)
 - Traductions française et anglaise
-- Niveau de qualité Home Assistant **Silver** (98 % de couverture de tests, toutes les règles requises remplies)
+- Niveau de qualité Home Assistant **Gold** (toutes les règles requises remplies ; 98 % de couverture de tests)
 
 ## Capteurs
 
@@ -287,10 +287,13 @@ Ce projet effectue de la rétro-ingénierie des API web des portails clients à 
 
 ## Contribuer
 
-Les contributions sont les bienvenues. Merci de :
-1. Ouvrir une issue avant tout changement non trivial
-2. Lancer `pytest tests/` et vérifier que tous les tests passent
-3. Suivre le style existant (formaté avec Black)
+Les contributions sont les bienvenues. Voir [CONTRIBUTING.md](CONTRIBUTING.md) (anglais) pour la mise en place de l'environnement de test, le style et les contrôles qualité.
+
+Récap rapide :
+1. Ouvrez une issue avant tout changement non trivial
+2. Installez la stack de test complète : `pip install -r requirements_test.txt`
+3. Lancez `python -m pytest tests/` et vérifiez les 49 tests passent (aucun skip)
+4. Lancez `python -m ruff check`, `python -m ruff format --check`, `python -m mypy custom_components/eaux_marseille/`
 
 ## Licence
 

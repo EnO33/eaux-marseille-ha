@@ -3,7 +3,7 @@
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Release](https://img.shields.io/github/v/release/EnO33/eaux-marseille-ha)](https://github.com/EnO33/eaux-marseille-ha/releases)
 [![Tests](https://github.com/EnO33/eaux-marseille-ha/actions/workflows/tests.yml/badge.svg)](https://github.com/EnO33/eaux-marseille-ha/actions/workflows/tests.yml)
-[![Quality scale: silver](https://img.shields.io/badge/quality--scale-silver-silver.svg)](https://developers.home-assistant.io/docs/core/integration-quality-scale)
+[![Quality scale: gold](https://img.shields.io/badge/quality--scale-gold-yellow.svg)](https://developers.home-assistant.io/docs/core/integration-quality-scale)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 🇫🇷 [Lire en français](README.fr.md)
@@ -32,7 +32,7 @@ It pulls your water consumption from the chosen portal every hour and exposes it
 - Reauthentication flow when the portal password changes — no need to delete and recreate the integration
 - Secure: cross-origin redirects refused (CVE-2018-18074-class protection)
 - French and English translations
-- Home Assistant **Silver** quality scale (98% test coverage, all required rules satisfied)
+- Home Assistant **Gold** quality scale (every required rule satisfied; 98% test coverage)
 
 ## Sensors
 
@@ -287,10 +287,13 @@ Use at your own risk.
 
 ## Contributing
 
-Contributions are welcome. Please:
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the local test setup, style and quality gates.
+
+Quick checklist:
 1. Open an issue first for non-trivial changes
-2. Run `pytest tests/` and ensure all tests pass
-3. Follow the existing code style (Black-formatted)
+2. Install the full test stack: `pip install -r requirements_test.txt`
+3. Run `python -m pytest tests/` and confirm all 49 tests pass (no skips)
+4. Run `python -m ruff check`, `python -m ruff format --check`, `python -m mypy custom_components/eaux_marseille/`
 
 ## License
 

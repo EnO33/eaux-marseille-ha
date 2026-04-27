@@ -7,7 +7,7 @@
   "documentation": "https://github.com/EnO33/eaux-marseille-ha",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/EnO33/eaux-marseille-ha/issues",
-  "quality_scale": "silver",
+  "quality_scale": "gold",
   "requirements": ["tenacity>=8.0"],
-  "version": "1.12.2"
+  "version": "1.13.0"
 }
