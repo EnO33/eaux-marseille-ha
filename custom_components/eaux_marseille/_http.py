@@ -26,7 +26,7 @@ from tenacity import (
 
 from . import _redirects
 from .const import BACKOFF_BASE_S, MAX_REDIRECTS, MAX_RETRIES
-from .exceptions import EauxDeMarseilleApiError
+from .exceptions import EauxDeMarseilleApiError, EauxDeMarseilleSessionExpiredError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -133,7 +133,18 @@ async def _send_following_redirects(
 
 
 async def _raise_for_status(response: aiohttp.ClientResponse, url: str) -> None:
-    """Raise on 4xx (no retry) or 5xx (re-raised as ClientResponseError so retry kicks in)."""
+    """Raise on 4xx (no retry) or 5xx (re-raised as ClientResponseError so retry kicks in).
+
+    401/403 surface as :class:`EauxDeMarseilleSessionExpiredError` (a
+    subclass of the generic API error) so the high-level client can
+    transparently re-authenticate and retry once, instead of bubbling
+    the failure up.
+    """
+    if response.status in (401, 403):
+        text = await response.text()
+        raise EauxDeMarseilleSessionExpiredError(
+            f"HTTP {response.status} at {url}: {text[:200]}"
+        )
     if 400 <= response.status < 500:
         text = await response.text()
         raise EauxDeMarseilleApiError(f"HTTP {response.status} at {url}: {text[:200]}")

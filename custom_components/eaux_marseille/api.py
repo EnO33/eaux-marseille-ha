@@ -27,6 +27,7 @@ from .exceptions import (
     EauxDeMarseilleApiError,
     EauxDeMarseilleAuthError,
     EauxDeMarseilleError,
+    EauxDeMarseilleSessionExpiredError,
 )
 from .models import ConsumptionData
 
@@ -36,6 +37,7 @@ __all__ = [
     "EauxDeMarseilleAuthError",
     "EauxDeMarseilleClient",
     "EauxDeMarseilleError",
+    "EauxDeMarseilleSessionExpiredError",
 ]
 
 
