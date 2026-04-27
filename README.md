@@ -191,6 +191,38 @@ If you need to change the email address, contract number or even the water utili
 
 You can add the integration multiple times, once per contract. Each contract becomes a separate device with its own sensors.
 
+## Services
+
+The integration exposes two custom actions you can call from automations or **Developer tools → Actions**.
+
+### `eaux_marseille.refresh`
+
+Trigger an immediate poll of the customer portal for the selected contract, instead of waiting for the next 1-hour cycle.
+
+```yaml
+action: eaux_marseille.refresh
+data:
+  config_entry: <pick from the dropdown>
+```
+
+Useful for:
+- Manual refresh after fixing a network outage
+- Hooking the integration into an automation that runs at meter-read time
+
+### `eaux_marseille.reimport_statistics`
+
+Re-run the historical monthly statistics import. By default the integration only imports new months on each restart — this service forces a full re-fetch from January 2024 onward.
+
+```yaml
+action: eaux_marseille.reimport_statistics
+data:
+  config_entry: <pick from the dropdown>
+```
+
+Useful for:
+- Recovering after a Repair issue surfaced a failed import
+- Filling in a gap in your Energy dashboard if the recorder lost rows
+
 ## Removal
 
 1. In Home Assistant, go to **Settings → Devices & Services**

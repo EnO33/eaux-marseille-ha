@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create GitHub release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # Fetch full history so the changelog generator can walk back
+          # to the previous tag.
+          fetch-depth: 0
+
+      - name: Verify manifest version matches tag
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          MANIFEST=$(python -c "import json; print(json.load(open('custom_components/eaux_marseille/manifest.json'))['version'])")
+          if [ "$TAG" != "$MANIFEST" ]; then
+            echo "::error::Tag $TAG does not match manifest version $MANIFEST"
+            exit 1
+          fi
+          echo "Tag and manifest both at $TAG."
+
+      - name: Build changelog
+        id: changelog
+        uses: mikepenz/release-changelog-builder-action@v5
+        with:
+          configurationJson: |
+            {
+              "categories": [
+                {"title": "## Features",      "labels": ["feat"],     "exhaustive": false},
+                {"title": "## Bug fixes",     "labels": ["fix"],      "exhaustive": false},
+                {"title": "## Documentation", "labels": ["docs"],     "exhaustive": false},
+                {"title": "## Refactoring",   "labels": ["refactor"], "exhaustive": false},
+                {"title": "## CI / chores",   "labels": ["ci", "chore", "deps"]}
+              ],
+              "label_extractor": [
+                {
+                  "pattern": "^(feat|fix|docs|refactor|ci|chore|deps|release)(\\(.+\\))?: ",
+                  "target": "$1",
+                  "on_property": "title"
+                }
+              ],
+              "template": "#{{CHANGELOG}}\n\n_Auto-generated from commits since the previous tag._",
+              "empty_template": "_No notable changes since the previous tag._"
+            }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body: ${{ steps.changelog.outputs.changelog }}
+          # Tags containing a dash (e.g. v1.0.0-beta.1) are pre-releases.
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: false

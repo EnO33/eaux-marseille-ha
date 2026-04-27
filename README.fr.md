@@ -191,6 +191,38 @@ Si vous devez changer l'adresse e-mail, le numéro de contrat ou même le fourni
 
 Vous pouvez ajouter l'intégration plusieurs fois, une fois par contrat. Chaque contrat devient un appareil séparé avec ses propres capteurs.
 
+## Actions
+
+L'intégration expose deux actions personnalisées appelables depuis des automatisations ou **Outils de développement → Actions**.
+
+### `eaux_marseille.refresh`
+
+Déclenche un poll immédiat du portail client pour le contrat sélectionné, sans attendre le prochain cycle d'une heure.
+
+```yaml
+action: eaux_marseille.refresh
+data:
+  config_entry: <à choisir dans le menu déroulant>
+```
+
+Utile pour :
+- Rafraîchir manuellement après une coupure réseau
+- Brancher l'intégration sur une automatisation qui tourne au moment du télérelevé
+
+### `eaux_marseille.reimport_statistics`
+
+Relance l'import historique des statistiques mensuelles. Par défaut, l'intégration n'importe que les nouveaux mois à chaque redémarrage — ce service force un re-fetch complet depuis janvier 2024.
+
+```yaml
+action: eaux_marseille.reimport_statistics
+data:
+  config_entry: <à choisir dans le menu déroulant>
+```
+
+Utile pour :
+- Récupérer après un signalement d'échec d'import (Réparations)
+- Combler un trou dans le tableau de bord Énergie si le recorder a perdu des lignes
+
 ## Suppression
 
 1. Dans Home Assistant, allez dans **Paramètres → Appareils et services**

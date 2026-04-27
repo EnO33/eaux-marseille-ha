@@ -1,0 +1,15 @@
+refresh:
+  fields:
+    config_entry:
+      required: true
+      selector:
+        config_entry:
+          integration: eaux_marseille
+
+reimport_statistics:
+  fields:
+    config_entry:
+      required: true
+      selector:
+        config_entry:
+          integration: eaux_marseille

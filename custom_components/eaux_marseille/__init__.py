@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, EVENT_HOMEASSISTANT_STARTED, Platform
@@ -12,6 +13,7 @@ from homeassistant.core import Event, HomeAssistant
 from .api import EauxDeMarseilleClient
 from .const import CONF_CONTRACT_ID, CONF_PROVIDER, DEFAULT_PROVIDER, Provider
 from .coordinator import EauxDeMarseilleCoordinator
+from .services import async_register_services
 from .statistics import async_import_historical_statistics
 
 _LOGGER = logging.getLogger(__name__)
@@ -29,6 +31,17 @@ class EauxDeMarseilleData:
 
 # Type alias for our typed config entries.
 type EauxDeMarseilleConfigEntry = ConfigEntry[EauxDeMarseilleData]
+
+
+async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
+    """Register integration-wide services.
+
+    Called once when Home Assistant first loads the integration component
+    (independent of any config entry). The ``config`` argument is empty
+    for config-flow-only integrations like this one.
+    """
+    async_register_services(hass)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: EauxDeMarseilleConfigEntry) -> bool:
