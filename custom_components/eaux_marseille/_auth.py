@@ -84,6 +84,27 @@ class PortalAuth:
         self._ael_token: str | None = None
 
     # ------------------------------------------------------------------
+    # State predicates
+    # ------------------------------------------------------------------
+
+    @property
+    def is_authenticated(self) -> bool:
+        """Whether a long-lived AEL session token is currently held."""
+        return self._ael_token is not None
+
+    def invalidate(self) -> None:
+        """Drop the cached AEL token so the next request re-authenticates.
+
+        The portal's ``aelToken`` and ``AEL_CONTEXT`` cookies are left in
+        the jar — they will be overwritten by the next successful login.
+        Clearing them eagerly would force a session-cookie re-handshake
+        on step 1 of the next auth, which the portal handles fine but is
+        unnecessary.
+        """
+        self._app_token = None
+        self._ael_token = None
+
+    # ------------------------------------------------------------------
     # Public flow
     # ------------------------------------------------------------------
 
