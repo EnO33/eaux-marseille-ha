@@ -5,6 +5,7 @@ These tests require a full Home Assistant environment and only run in CI.
 
 from __future__ import annotations
 
+from contextlib import ExitStack
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -19,17 +20,48 @@ from custom_components.eaux_marseille.api import (
 )
 from custom_components.eaux_marseille.const import DOMAIN
 
-from .conftest import MOCK_CONFIG_ENTRY_DATA, MOCK_CONTRACT_ID
+from .conftest import MOCK_CONFIG_ENTRY_DATA, MOCK_CONSUMPTION, MOCK_CONTRACT_ID
 
 pytestmark = [pytest.mark.ha_required, pytest.mark.usefixtures("enable_custom_integrations")]
 
 
+def _full_client_mock(mock_client: MagicMock):
+    """Patch every import path that constructs an EauxDeMarseilleClient.
+
+    The config flow validates credentials with one client, but on
+    ``CREATE_ENTRY`` / reauth-reload Home Assistant immediately calls
+    ``async_setup_entry`` which imports the client from ``.api`` via
+    ``__init__``. Without patching that second path the real client
+    runs and opens a real socket — pytest-homeassistant-custom-component
+    fails the test on socket access since 0.13.317.
+
+    The coordinator's update method and the statistics importer are
+    patched alongside so the post-create setup is fully offline.
+    """
+    return [
+        patch(
+            "custom_components.eaux_marseille.config_flow.EauxDeMarseilleClient",
+            return_value=mock_client,
+        ),
+        patch(
+            "custom_components.eaux_marseille.EauxDeMarseilleClient",
+            return_value=mock_client,
+        ),
+        patch(
+            "custom_components.eaux_marseille.coordinator.EauxDeMarseilleCoordinator._async_update_data",
+            return_value=MOCK_CONSUMPTION,
+        ),
+        patch(
+            "custom_components.eaux_marseille.async_import_historical_statistics",
+        ),
+    ]
+
+
 async def test_user_flow_success(hass: HomeAssistant, mock_client: MagicMock) -> None:
     """Test a successful config flow from the user step."""
-    with patch(
-        "custom_components.eaux_marseille.config_flow.EauxDeMarseilleClient",
-        return_value=mock_client,
-    ):
+    with ExitStack() as stack:
+        for cm in _full_client_mock(mock_client):
+            stack.enter_context(cm)
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
@@ -39,6 +71,7 @@ async def test_user_flow_success(hass: HomeAssistant, mock_client: MagicMock) ->
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input=MOCK_CONFIG_ENTRY_DATA
         )
+        await hass.async_block_till_done()
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == f"Contrat {MOCK_CONTRACT_ID}"
@@ -111,10 +144,9 @@ async def test_reauth_flow_success(
     hass: HomeAssistant, mock_client: MagicMock, mock_config_entry
 ) -> None:
     """Reauth with valid credentials updates the entry password and reloads."""
-    with patch(
-        "custom_components.eaux_marseille.config_flow.EauxDeMarseilleClient",
-        return_value=mock_client,
-    ):
+    with ExitStack() as stack:
+        for cm in _full_client_mock(mock_client):
+            stack.enter_context(cm)
         result = await mock_config_entry.start_reauth_flow(hass)
         assert result["type"] is FlowResultType.FORM
         assert result["step_id"] == "reauth_confirm"

@@ -11,7 +11,11 @@ markers = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+# Source target stays at py313 so the API-only tests still run on a
+# local 3.13 interpreter. The full test stack (pytest-homeassistant-custom-component)
+# requires 3.14, but the API tests don't pull it in. mypy targets 3.14
+# separately so it can parse HA core's 3.14 syntax.
+target-version = "py313"
 extend-exclude = ["brand"]
 
 [tool.ruff.lint]
@@ -76,7 +80,7 @@ indent-style = "space"
 # ---------------------------------------------------------------------
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.14"
 strict = true
 warn_unreachable = true
 # Some `# type: ignore` comments target false positives that only appear
