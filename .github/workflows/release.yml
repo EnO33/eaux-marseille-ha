@@ -30,31 +30,62 @@ jobs:
           fi
           echo "Tag and manifest both at $TAG."
 
-      - name: Build changelog
+      - name: Build changelog from commits
         id: changelog
-        uses: mikepenz/release-changelog-builder-action@v5
-        with:
-          configurationJson: |
-            {
-              "categories": [
-                {"title": "## Features",      "labels": ["feat"],     "exhaustive": false},
-                {"title": "## Bug fixes",     "labels": ["fix"],      "exhaustive": false},
-                {"title": "## Documentation", "labels": ["docs"],     "exhaustive": false},
-                {"title": "## Refactoring",   "labels": ["refactor"], "exhaustive": false},
-                {"title": "## CI / chores",   "labels": ["ci", "chore", "deps"]}
-              ],
-              "label_extractor": [
-                {
-                  "pattern": "^(feat|fix|docs|refactor|ci|chore|deps|release)(\\(.+\\))?: ",
-                  "target": "$1",
-                  "on_property": "title"
-                }
-              ],
-              "template": "#{{CHANGELOG}}\n\n_Auto-generated from commits since the previous tag._",
-              "empty_template": "_No notable changes since the previous tag._"
-            }
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Find the previous tag to delimit the changelog window. If
+          # there is none (first release), walk back to the root commit.
+          PREV_TAG=$(git describe --tags --abbrev=0 "${GITHUB_REF}^" 2>/dev/null || true)
+          if [ -z "$PREV_TAG" ]; then
+            RANGE=$(git rev-list --max-parents=0 HEAD | head -n1)..HEAD
+            HEADER="Initial release."
+          else
+            RANGE="${PREV_TAG}..HEAD"
+            HEADER="Changes since [\`${PREV_TAG}\`](https://github.com/${GITHUB_REPOSITORY}/releases/tag/${PREV_TAG}):"
+          fi
+
+          # Group conventional commits by type. Anything that doesn't
+          # match a known prefix lands in "Other".
+          declare -A SECTIONS=(
+            [feat]="## Features"
+            [fix]="## Bug fixes"
+            [docs]="## Documentation"
+            [refactor]="## Refactoring"
+            [test]="## Tests"
+            [ci]="## CI / chores"
+            [chore]="## CI / chores"
+            [deps]="## CI / chores"
+          )
+
+          {
+            echo "$HEADER"
+            echo
+            for section_key in feat fix docs refactor test ci; do
+              header="${SECTIONS[$section_key]}"
+              # Build a regex like ^(feat)(\(.+\))?:
+              if [ "$section_key" = "ci" ]; then
+                pattern='^(ci|chore|deps)(\(.+\))?: '
+              else
+                pattern="^(${section_key})(\(.+\))?: "
+              fi
+              entries=$(git log --no-merges --pretty=format:"- %s (%h)" "$RANGE" | grep -E "$pattern" || true)
+              if [ -n "$entries" ]; then
+                printf '%s\n\n%s\n\n' "$header" "$entries"
+              fi
+            done
+            other=$(git log --no-merges --pretty=format:"- %s (%h)" "$RANGE" \
+              | grep -vE '^- (feat|fix|docs|refactor|test|ci|chore|deps|release)(\(.+\))?: ' || true)
+            if [ -n "$other" ]; then
+              printf '## Other\n\n%s\n\n' "$other"
+            fi
+            echo "_Auto-generated from commits since ${PREV_TAG:-the start}._"
+          } > changelog.md
+
+          {
+            echo "changelog<<__EOF__"
+            cat changelog.md
+            echo "__EOF__"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
