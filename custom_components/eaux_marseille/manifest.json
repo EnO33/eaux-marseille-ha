@@ -9,5 +9,5 @@
   "issue_tracker": "https://github.com/EnO33/eaux-marseille-ha/issues",
   "quality_scale": "silver",
   "requirements": ["tenacity>=8.0"],
-  "version": "1.11.1"
+  "version": "1.12.0"
 }
