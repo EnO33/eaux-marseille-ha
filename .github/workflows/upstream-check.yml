@@ -1,0 +1,112 @@
+name: Upstream check
+
+# Validates that the three customer portals (SEM / SEMM / Vivaigo) are
+# alive and that the embedded application credentials still produce a
+# valid bearer token. Catches the two upstream failure modes that we
+# would otherwise discover only when a user opens an issue:
+#
+#   1. Portal URL change or outage  → "Landing" job
+#   2. Vendor (SOMEI/Veolia) rotates the static ClientId / AccessKey
+#      embedded in the portal JS bundle  → "Token API" job
+#
+# The access keys are NOT secrets — they're shipped in the portal's
+# public JavaScript bundle and duplicated here from
+# custom_components/eaux_marseille/const.py so the workflow stays
+# self-contained (no checkout, no Python install needed).
+#
+# Failure: GitHub sends an email to the repo admin on a failed
+# scheduled run, no extra notification setup needed.
+
+on:
+  schedule:
+    # Mondays 05:30 UTC ≈ 07:30 Europe/Paris (winter) / 06:30 (summer).
+    # Matches the dependabot cadence — same day for the maintainer.
+    - cron: "30 5 * * 1"
+  workflow_dispatch:
+  # Re-run on any change to the constants module so an accidental
+  # provider URL typo is caught before it reaches a release.
+  push:
+    branches: [main]
+    paths:
+      - custom_components/eaux_marseille/const.py
+
+permissions:
+  contents: read
+
+jobs:
+  landing:
+    name: Landing — ${{ matrix.portal.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        portal:
+          - name: SEM
+            url: https://espaceclients.eauxdemarseille.fr/
+          - name: SEMM
+            url: https://espaceclients.eaudemarseille-metropole.fr/
+          - name: Vivaigo
+            url: https://espaceclients.vivaigo.fr/
+    steps:
+      - name: GET ${{ matrix.portal.url }}
+        run: |
+          status=$(curl -sI -o /dev/null -w "%{http_code}" --max-time 30 \
+            -L "${{ matrix.portal.url }}")
+          echo "HTTP $status"
+          if [[ "$status" != "200" ]]; then
+            echo "::error::Landing for ${{ matrix.portal.name }} returned $status (expected 200)"
+            exit 1
+          fi
+
+  token:
+    name: Token API — ${{ matrix.portal.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        portal:
+          - name: SEM
+            url: https://espaceclients.eauxdemarseille.fr/webapi/Acces/generateToken
+            origin: https://espaceclients.eauxdemarseille.fr
+            client_id: SOMEI-GSEM-PRD
+            access_key: "XX_ma2DD-2017-GSEM-PRD!"
+          - name: SEMM
+            url: https://espaceclients.eaudemarseille-metropole.fr/webapi/Acces/generateToken
+            origin: https://espaceclients.eaudemarseille-metropole.fr
+            client_id: SOMEI-SEMM-PRD
+            access_key: "XX_ma3pD-2017-SEMM-PRD!"
+          - name: Vivaigo
+            url: https://espaceclients.vivaigo.fr/webapi/Acces/generateToken
+            origin: https://espaceclients.vivaigo.fr
+            client_id: SOMEI-VIE-PRD
+            access_key: "QT_gha8D-2024-VIE-PRD!"
+    steps:
+      - name: POST generateToken
+        run: |
+          set -o pipefail
+          cid="JS-WEB-Netscape-$(uuidgen)"
+          body=$(printf '{"ConversationId":"%s","ClientId":"%s","AccessKey":"%s"}' \
+            "$cid" \
+            "${{ matrix.portal.client_id }}" \
+            "${{ matrix.portal.access_key }}")
+          response=$(mktemp)
+          status=$(curl -s -o "$response" -w "%{http_code}" --max-time 30 \
+            -X POST "${{ matrix.portal.url }}" \
+            -H "Content-Type: application/json" \
+            -H "Origin: ${{ matrix.portal.origin }}" \
+            -H "Referer: ${{ matrix.portal.origin }}/" \
+            -H "ConversationId: $cid" \
+            -H "token: ${{ matrix.portal.access_key }}" \
+            -d "$body")
+          echo "HTTP $status"
+          if [[ "$status" != "200" ]]; then
+            echo "::error::generateToken for ${{ matrix.portal.name }} returned $status — vendor may have rotated the static credentials"
+            head -c 500 "$response"
+            exit 1
+          fi
+          if ! jq -e '.token' "$response" >/dev/null 2>&1; then
+            echo "::error::generateToken for ${{ matrix.portal.name }} returned 200 but the body has no 'token' field"
+            head -c 500 "$response"
+            exit 1
+          fi
+          echo "Static credentials still valid for ${{ matrix.portal.name }}"
