@@ -26,7 +26,11 @@ from tenacity import (
 
 from . import _redirects
 from .const import BACKOFF_BASE_S, MAX_REDIRECTS, MAX_RETRIES
-from .exceptions import EauxDeMarseilleApiError, EauxDeMarseilleSessionExpiredError
+from .exceptions import (
+    EauxDeMarseilleApiError,
+    EauxDeMarseilleNoDataError,
+    EauxDeMarseilleSessionExpiredError,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -135,14 +139,27 @@ async def _send_following_redirects(
 async def _raise_for_status(response: aiohttp.ClientResponse, url: str) -> None:
     """Raise on 4xx (no retry) or 5xx (re-raised as ClientResponseError so retry kicks in).
 
-    401/403 surface as :class:`EauxDeMarseilleSessionExpiredError` (a
-    subclass of the generic API error) so the high-level client can
-    transparently re-authenticate and retry once, instead of bubbling
-    the failure up.
+    Three 4xx subclasses get specialised exceptions so the high-level
+    client can react instead of bubbling them up to the user:
+
+    * 401/403 -> :class:`EauxDeMarseilleSessionExpiredError`
+      (re-authenticate transparently and retry once).
+    * 400 with body ``{"severity": "Information", ...}`` ->
+      :class:`EauxDeMarseilleNoDataError` (the portal soft-rejects with
+      "you don't have the rights" on freshly-activated contracts that
+      haven't accumulated telemetry yet — substitute an empty result
+      and keep the integration usable).
+
+    Any other 4xx falls through to :class:`EauxDeMarseilleApiError`.
     """
     if response.status in (401, 403):
         text = await response.text()
         raise EauxDeMarseilleSessionExpiredError(f"HTTP {response.status} at {url}: {text[:200]}")
+    if response.status == 400:
+        text = await response.text()
+        if _is_soft_no_data(text):
+            raise EauxDeMarseilleNoDataError(f"HTTP 400 at {url} (no data yet): {text[:200]}")
+        raise EauxDeMarseilleApiError(f"HTTP 400 at {url}: {text[:200]}")
     if 400 <= response.status < 500:
         text = await response.text()
         raise EauxDeMarseilleApiError(f"HTTP {response.status} at {url}: {text[:200]}")
@@ -154,6 +171,22 @@ async def _raise_for_status(response: aiohttp.ClientResponse, url: str) -> None:
             status=response.status,
             message=text[:200],
         )
+
+
+def _is_soft_no_data(body: str) -> bool:
+    """Detect the portal's soft-error response signalling no data is available.
+
+    The portal returns ``HTTP 400`` with a JSON body of
+    ``{"severity": "Information", "message": "..."}`` for endpoints
+    where the contract is too fresh to have data, rather than returning
+    an empty list. We use the ``severity`` field as the marker since
+    the human-readable message is locale-dependent.
+    """
+    try:
+        parsed = json.loads(body)
+    except (json.JSONDecodeError, ValueError):
+        return False
+    return isinstance(parsed, dict) and parsed.get("severity") == "Information"
 
 
 async def _parse_json_or_raise(

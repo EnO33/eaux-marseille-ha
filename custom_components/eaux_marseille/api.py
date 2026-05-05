@@ -29,6 +29,7 @@ from .exceptions import (
     EauxDeMarseilleApiError,
     EauxDeMarseilleAuthError,
     EauxDeMarseilleError,
+    EauxDeMarseilleNoDataError,
     EauxDeMarseilleSessionExpiredError,
 )
 from .models import ConsumptionData
@@ -39,6 +40,7 @@ __all__ = [
     "EauxDeMarseilleAuthError",
     "EauxDeMarseilleClient",
     "EauxDeMarseilleError",
+    "EauxDeMarseilleNoDataError",
     "EauxDeMarseilleSessionExpiredError",
 ]
 
@@ -129,19 +131,43 @@ class EauxDeMarseilleClient:
         return await self._with_session_recovery(lambda: self._fetch_monthly_inner(year))
 
     async def _fetch_inner(self) -> ConsumptionData:
-        last = await self._auth.get(
+        last = await self._safe_get(
             f"/TableauDeBord/derniereConsommationFacturee/{self._contract_id}"
         )
-        monthly = await self._auth.get(self._monthly_path(datetime.now(UTC).year))
-        history = await self._auth.get(
+        monthly = await self._safe_get(self._monthly_path(datetime.now(UTC).year))
+        history = await self._safe_get(
             f"/Facturation/listeConsommationsFacturees/{self._contract_id}"
         )
         return ConsumptionData.from_api_responses(last, monthly, history)
 
     async def _fetch_monthly_inner(self, year: int) -> list[dict[str, Any]]:
-        data = await self._auth.get(self._monthly_path(year))
+        data = await self._safe_get(self._monthly_path(year))
         entries: list[dict[str, Any]] = data.get("consommations", [])
         return entries
+
+    async def _safe_get(self, path: str) -> dict[str, Any]:
+        """Authenticated GET that tolerates the portal's 'no data yet' soft 400.
+
+        Freshly-activated contracts can lack the data behind certain
+        endpoints (typically the monthly consumption chart on a 3-week
+        old meter). The portal signals that with ``HTTP 400`` carrying
+        ``{"severity": "Information", ...}`` rather than an empty list.
+        Substituting an empty dict here lets ``_fetch_inner`` keep going
+        across the remaining endpoints; ``ConsumptionData.from_api_responses``
+        already tolerates missing keys defensively, so the resulting
+        ``ConsumptionData`` has ``None`` for any field whose source
+        endpoint was empty — sensors show as ``unavailable`` until the
+        portal starts serving data.
+        """
+        try:
+            return await self._auth.get(path)
+        except EauxDeMarseilleNoDataError as err:
+            _LOGGER.info(
+                "Portal returned no data for %s (likely a fresh contract): %s",
+                path,
+                err,
+            )
+            return {}
 
     async def _with_session_recovery(
         self,

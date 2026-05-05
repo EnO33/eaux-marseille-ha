@@ -20,6 +20,7 @@ from custom_components.eaux_marseille.api import (
     EauxDeMarseilleApiError,
     EauxDeMarseilleAuthError,
     EauxDeMarseilleClient,
+    EauxDeMarseilleNoDataError,
     EauxDeMarseilleSessionExpiredError,
 )
 from custom_components.eaux_marseille.const import PROVIDERS, Provider
@@ -453,6 +454,122 @@ class TestFetch:
         await client.authenticate()
         with pytest.raises(EauxDeMarseilleApiError):
             await client.fetch()
+
+
+class TestFreshContract:
+    """The portal returns 400 + ``severity: Information`` on freshly
+    activated contracts that haven't accumulated telemetry yet. This
+    must not fail the fetch — substitute an empty result for the
+    affected endpoint and let the rest go through.
+    """
+
+    _SOFT_400_BODY = json.dumps(
+        {
+            "severity": "Information",
+            "message": (
+                "Vous n'avez pas les droits nécessaires pour accéder à cette fonctionnalité."
+            ),
+        }
+    )
+
+    async def test_soft_400_on_monthly_endpoint_keeps_other_data(
+        self, client: EauxDeMarseilleClient, mock_auth: aioresponses
+    ) -> None:
+        """The exact scenario reported by the first Vivaigo user: monthly
+        chart endpoint returns the soft 400 while the other two endpoints
+        carry data."""
+        mock_auth.get(
+            f"{_API_BASE}/TableauDeBord/derniereConsommationFacturee/{CONTRACT_ID}",
+            payload={"valeurIndex": 5.0, "volumeConsoEnM3": 5.0},
+        )
+        mock_auth.get(
+            re.compile(r".*listeConsommationsInstanceAlerteChart.*"),
+            status=400,
+            body=self._SOFT_400_BODY,
+            content_type="application/json",
+        )
+        mock_auth.get(
+            f"{_API_BASE}/Facturation/listeConsommationsFacturees/{CONTRACT_ID}",
+            payload={"nbTotalResultats": 1, "resultats": [{"volumeConsoEnM3": 5.0}]},
+        )
+
+        await client.authenticate()
+        data = await client.fetch()
+
+        # Index/last-reading from endpoint 1 still flows through.
+        assert data.index_m3 == 5.0
+        assert data.last_reading_m3 == 5.0
+        # Monthly endpoint produced no data, so derived fields are empty.
+        assert data.current_month_m3 is None
+        assert data.current_year_m3 == 0.0
+        # History endpoint flowed through too.
+        assert data.total_readings == 1
+
+    async def test_soft_400_on_all_endpoints_returns_empty_data(
+        self, client: EauxDeMarseilleClient, mock_auth: aioresponses
+    ) -> None:
+        """Worst case: brand new contract, all three endpoints soft-fail.
+        The integration must still load with a valid (mostly-None)
+        ConsumptionData rather than raising.
+        """
+        for path in (
+            f"{_API_BASE}/TableauDeBord/derniereConsommationFacturee/{CONTRACT_ID}",
+            f"{_API_BASE}/Facturation/listeConsommationsFacturees/{CONTRACT_ID}",
+        ):
+            mock_auth.get(
+                path,
+                status=400,
+                body=self._SOFT_400_BODY,
+                content_type="application/json",
+            )
+        mock_auth.get(
+            re.compile(r".*listeConsommationsInstanceAlerteChart.*"),
+            status=400,
+            body=self._SOFT_400_BODY,
+            content_type="application/json",
+        )
+
+        await client.authenticate()
+        data = await client.fetch()
+
+        assert isinstance(data, ConsumptionData)
+        assert data.index_m3 is None
+        assert data.last_reading_m3 is None
+        assert data.total_readings == 0
+
+    async def test_hard_400_still_raises(
+        self, client: EauxDeMarseilleClient, mock_auth: aioresponses
+    ) -> None:
+        """A 400 without the ``severity: Information`` marker is a real
+        error and must still surface as EauxDeMarseilleApiError.
+        """
+        mock_auth.get(
+            f"{_API_BASE}/TableauDeBord/derniereConsommationFacturee/{CONTRACT_ID}",
+            status=400,
+            body='{"severity": "Error", "message": "malformed request"}',
+            content_type="application/json",
+        )
+        await client.authenticate()
+        with pytest.raises(EauxDeMarseilleApiError) as excinfo:
+            await client.fetch()
+        # Specifically NOT the no-data subclass — this is a hard 400.
+        assert not isinstance(excinfo.value, EauxDeMarseilleNoDataError)
+
+    async def test_fetch_monthly_range_tolerates_soft_400(
+        self, client: EauxDeMarseilleClient, mock_auth: aioresponses
+    ) -> None:
+        """Statistics import path also tolerates the soft 400 — returns
+        an empty list instead of failing the whole import.
+        """
+        mock_auth.get(
+            re.compile(r".*listeConsommationsInstanceAlerteChart.*"),
+            status=400,
+            body=self._SOFT_400_BODY,
+            content_type="application/json",
+        )
+        await client.authenticate()
+        entries = await client.fetch_monthly_range(2024)
+        assert entries == []
 
 
 class TestSessionRecovery:

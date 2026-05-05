@@ -27,3 +27,17 @@ class EauxDeMarseilleSessionExpiredError(EauxDeMarseilleApiError):
     high-level client) can transparently re-authenticate and retry the
     request once, instead of bubbling the failure up to the user.
     """
+
+
+class EauxDeMarseilleNoDataError(EauxDeMarseilleApiError):
+    """Raised when the portal soft-rejects a data endpoint with 400.
+
+    The Vivaigo / SEM / SEMM API returns ``HTTP 400`` with a JSON body
+    of ``{"severity": "Information", "message": ...}`` to signal that
+    the requested data is not available — typically on a freshly
+    activated contract that has not yet accumulated telemetry.
+
+    Distinct from :class:`EauxDeMarseilleApiError` so the high-level
+    client can substitute an empty result for that single endpoint and
+    keep the integration usable, instead of failing the whole fetch.
+    """
