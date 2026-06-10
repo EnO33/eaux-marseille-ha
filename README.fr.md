@@ -41,7 +41,8 @@ L'intégration récupère votre consommation d'eau depuis le portail choisi tout
 | `sensor.eaux_de_marseille_<contrat>_mois_en_cours` | Consommation du mois en cours | m³ |
 | `sensor.eaux_de_marseille_<contrat>_mois_en_cours_litres` | Consommation du mois en cours | L |
 | `sensor.eaux_de_marseille_<contrat>_annee_en_cours` | Consommation depuis le début de l'année | m³ |
-| `sensor.eaux_de_marseille_<contrat>_index_compteur` | Index actuel du compteur | m³ |
+| `sensor.eaux_de_marseille_<contrat>_index_compteur` | Index du compteur (facturé) | m³ |
+| `sensor.eaux_de_marseille_<contrat>_index_compteur_precis` | Index précis du compteur (au litre, `total_increasing`) | m³ |
 | `sensor.eaux_de_marseille_<contrat>_moyenne_journaliere` | Moyenne journalière | m³ |
 | `sensor.eaux_de_marseille_<contrat>_dernier_releve` | Dernière consommation facturée | m³ |
 | `sensor.eaux_de_marseille_<contrat>_dernier_releve_litres` | Dernière consommation facturée | L |

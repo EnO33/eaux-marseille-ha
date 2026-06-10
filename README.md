@@ -41,7 +41,8 @@ It pulls your water consumption from the chosen portal every hour and exposes it
 | `sensor.eaux_de_marseille_<contract>_mois_en_cours` | Current month consumption | m³ |
 | `sensor.eaux_de_marseille_<contract>_mois_en_cours_litres` | Current month consumption | L |
 | `sensor.eaux_de_marseille_<contract>_annee_en_cours` | Year-to-date consumption | m³ |
-| `sensor.eaux_de_marseille_<contract>_index_compteur` | Current meter index | m³ |
+| `sensor.eaux_de_marseille_<contract>_index_compteur` | Current meter index (billed) | m³ |
+| `sensor.eaux_de_marseille_<contract>_index_compteur_precis` | Precise meter index (litre-level, `total_increasing`) | m³ |
 | `sensor.eaux_de_marseille_<contract>_moyenne_journaliere` | Daily average | m³ |
 | `sensor.eaux_de_marseille_<contract>_dernier_releve` | Last billed consumption | m³ |
 | `sensor.eaux_de_marseille_<contract>_dernier_releve_litres` | Last billed consumption | L |

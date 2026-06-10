@@ -49,6 +49,7 @@
       "current_month_litres": { "name": "Current month (litres)" },
       "current_year_m3": { "name": "Current year" },
       "index_m3": { "name": "Meter index" },
+      "index_precise_m3": { "name": "Meter index (precise)" },
       "daily_average_m3": { "name": "Daily average" },
       "last_reading_m3": { "name": "Last reading" },
       "last_reading_litres": { "name": "Last reading (litres)" },

@@ -44,6 +44,7 @@ async def test_sensors_created(
         "current_month_litres",
         "current_year_m3",
         "index_m3",
+        "index_precise_m3",
         "daily_average_m3",
         "last_reading_m3",
         "last_reading_litres",
@@ -92,6 +93,14 @@ async def test_sensor_values(
     state = hass.states.get(index_entity.entity_id)
     assert state is not None
     assert float(state.state) == 193.0
+
+    # Find the precise index entity (from the monthly endpoint, litre-level)
+    precise_entity = next(
+        e for e in entries if e.unique_id == f"{MOCK_CONTRACT_ID}_index_precise_m3"
+    )
+    state = hass.states.get(precise_entity.entity_id)
+    assert state is not None
+    assert float(state.state) == 193.842
 
     # Find the total_readings entity
     readings_entity = next(

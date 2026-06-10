@@ -414,8 +414,8 @@ class TestFetch:
             re.compile(r".*listeConsommationsInstanceAlerteChart.*"),
             payload={
                 "consommations": [
-                    {"volumeConsoEnM3": 5.0},
-                    {"volumeConsoEnM3": 5.481},
+                    {"volumeConsoEnM3": 5.0, "valeurIndex": 207501},
+                    {"volumeConsoEnM3": 5.481, "valeurIndex": 212982},
                 ]
             },
         )
@@ -435,6 +435,9 @@ class TestFetch:
 
         assert isinstance(data, ConsumptionData)
         assert data.index_m3 == 193.0
+        # Precise index comes from the LAST monthly entry's valeurIndex
+        # (in litres) converted to m³: 212982 L -> 212.982 m³.
+        assert data.index_precise_m3 == 212.982
         assert data.last_reading_m3 == 18.0
         assert data.last_reading_litres == 18000
         assert data.last_reading_days == 94

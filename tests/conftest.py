@@ -64,6 +64,7 @@ MOCK_CONFIG_ENTRY_DATA = {
 
 MOCK_CONSUMPTION = ConsumptionData(
     index_m3=193.0,
+    index_precise_m3=193.842,
     last_reading_m3=18.0,
     last_reading_litres=18000,
     last_reading_date="2026-03-05",

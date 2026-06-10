@@ -70,6 +70,20 @@ SENSOR_DESCRIPTIONS: tuple[EauxDeMarseilleEntityDescription, ...] = (
         suggested_display_precision=0,
         value_fn=lambda d: d.index_m3,
     ),
+    # Precise meter index from the monthly-chart endpoint (litre-level,
+    # refreshed as the portal reports consumption). As a TOTAL_INCREASING
+    # sensor, Home Assistant auto-generates long-term statistics from it,
+    # so a statistics-graph (period: day/month) shows consumption derived
+    # from the index deltas — finer than the quarterly billed index.
+    EauxDeMarseilleEntityDescription(
+        key="index_precise_m3",
+        translation_key="index_precise_m3",
+        native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
+        device_class=SensorDeviceClass.WATER,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        suggested_display_precision=3,
+        value_fn=lambda d: d.index_precise_m3,
+    ),
     EauxDeMarseilleEntityDescription(
         key="daily_average_m3",
         translation_key="daily_average_m3",

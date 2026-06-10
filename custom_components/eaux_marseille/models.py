@@ -25,6 +25,7 @@ class ConsumptionData:
     """
 
     index_m3: float | None
+    index_precise_m3: float | None
     last_reading_m3: float | None
     last_reading_litres: int | None
     last_reading_date: str | None
@@ -69,6 +70,7 @@ class ConsumptionData:
 
         return cls(
             index_m3=last_billed.get("valeurIndex"),
+            index_precise_m3=_litres_to_m3(current_month.get("valeurIndex")),
             last_reading_m3=last_billed.get("volumeConsoEnM3"),
             last_reading_litres=last_billed.get("volumeConsoEnLitres"),
             last_reading_date=_iso_date_prefix(last_billed.get("dateReleve")),
@@ -86,6 +88,20 @@ class ConsumptionData:
 def _iso_date_prefix(value: str | None) -> str | None:
     """Return the ``YYYY-MM-DD`` prefix of an ISO datetime, or ``None``."""
     return value[:10] if value else None
+
+
+def _litres_to_m3(litres: float | int | None) -> float | None:
+    """Convert a litre index to m³, rounded to the litre (3 decimals).
+
+    The monthly-chart endpoint reports ``valeurIndex`` in **litres**
+    (e.g. ``212982``), unlike the billed endpoint whose ``valeurIndex``
+    is already in m³. This is the precise, frequently-updated meter
+    index — exposed as a ``total_increasing`` sensor so Home Assistant
+    derives daily/monthly consumption from its deltas.
+    """
+    if litres is None:
+        return None
+    return round(float(litres) / 1000, 3)
 
 
 def encode_context_cookie(
