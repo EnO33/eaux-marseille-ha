@@ -36,8 +36,15 @@ except (ImportError, ModuleNotFoundError):
         "homeassistant.helpers",
         "homeassistant.helpers.device_registry",
         "homeassistant.helpers.entity_platform",
+        "homeassistant.helpers.event",
         "homeassistant.helpers.update_coordinator",
         "homeassistant.data_entry_flow",
+        "homeassistant.util",
+        "homeassistant.util.dt",
+        # Stubbed so HA-only test modules (skipped locally via the
+        # ha_required marker) still import cleanly during collection.
+        "pytest_homeassistant_custom_component",
+        "pytest_homeassistant_custom_component.common",
         "voluptuous",
     ):
         sys.modules[mod] = _ha
