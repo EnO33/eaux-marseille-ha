@@ -1,8 +1,17 @@
 """Historical statistics importer for Eaux de Marseille.
 
 Backfills monthly water consumption into the Home Assistant recorder
-using the external-statistics API. Safe to call multiple times — months
-that are already present are skipped.
+using the external-statistics API.
+
+The full monthly series is re-imported on every run and the recorder
+points are overwritten (``async_add_external_statistics`` upserts by
+``(statistic_id, start)``). This is deliberate: the portal revises
+recent months — the current month grows from a partial value to its
+final total, and quarterly-read meters get their months reconciled
+when a reading lands. An "import once, never touch again" approach
+froze those months on stale partial values (#31). Re-deriving the
+whole series from the live data each run keeps the Energy dashboard
+correct and is self-healing for already-corrupted statistics.
 """
 
 from __future__ import annotations
@@ -19,10 +28,7 @@ from homeassistant.components.recorder.models import (
     StatisticMeanType,
     StatisticMetaData,
 )
-from homeassistant.components.recorder.statistics import (
-    async_add_external_statistics,
-    get_last_statistics,
-)
+from homeassistant.components.recorder.statistics import async_add_external_statistics
 from homeassistant.const import UnitOfVolume
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
@@ -41,7 +47,11 @@ async def async_import_historical_statistics(
     client: EauxDeMarseilleClient,
     contract_id: str,
 ) -> None:
-    """Import the available monthly statistics into the HA recorder.
+    """Re-import the full monthly statistics series into the HA recorder.
+
+    Always re-derives every month from the live portal data and
+    overwrites the recorder points, so revised/partial months are
+    corrected rather than frozen (#31).
 
     Failures surface as a HA repair issue (Settings -> Repairs) so the
     user gets actionable feedback instead of a silent log line. A
@@ -54,15 +64,10 @@ async def async_import_historical_statistics(
         await instance.async_db_ready
 
         statistic_id = f"{DOMAIN}:monthly_consumption_{contract_id}"
-        last_ts, running_sum = await _load_last_imported(hass, statistic_id)
 
-        _LOGGER.debug(
-            "Starting historical statistics import for contract %s (last_ts=%s)",
-            contract_id,
-            last_ts,
-        )
+        _LOGGER.debug("Starting statistics (re)import for contract %s", contract_id)
 
-        stats = await _collect_new_stats(client, last_ts, running_sum)
+        stats = await _collect_all_stats(client)
         if stats:
             async_add_external_statistics(hass, _build_metadata(contract_id, statistic_id), stats)
             _LOGGER.info(
@@ -73,7 +78,7 @@ async def async_import_historical_statistics(
             )
         else:
             _LOGGER.debug(
-                "No new historical statistics to import for contract %s",
+                "No monthly statistics available to import for contract %s",
                 contract_id,
             )
     except Exception:
@@ -93,45 +98,20 @@ async def async_import_historical_statistics(
     ir.async_delete_issue(hass, DOMAIN, issue_id)
 
 
-async def _load_last_imported(
-    hass: HomeAssistant,
-    statistic_id: str,
-) -> tuple[float, float]:
-    """Return the timestamp and running sum of the latest stored stat."""
-    instance = get_instance(hass)
-    existing = await instance.async_add_executor_job(
-        get_last_statistics,
-        hass,
-        1,
-        statistic_id,
-        True,
-        {"sum"},
-    )
-    if not existing.get(statistic_id):
-        return 0.0, 0.0
-    last_entry = existing[statistic_id][0]
-    return float(last_entry["start"]), float(last_entry.get("sum") or 0.0)
-
-
-async def _collect_new_stats(
+async def _collect_all_stats(
     client: EauxDeMarseilleClient,
-    last_ts: float,
-    running_sum: float,
 ) -> list[StatisticData]:
-    """Fetch and convert all months newer than ``last_ts``."""
+    """Fetch every month from ``_START_YEAR`` to now and build the series.
+
+    The cumulative ``sum`` is recomputed from zero over the full series
+    every time, so overwriting the recorder points yields an internally
+    consistent set whatever the portal has revised since the last run.
+    """
     stats: list[StatisticData] = []
+    running_sum = 0.0
     current_year = datetime.now(UTC).year
 
-    # If we already imported some history, only refetch from that year
-    # forward — re-walking the years before ``last_ts`` would just hit
-    # the portal for entries we'd discard. On a fresh entry, ``last_ts``
-    # is 0.0 and we start from ``_START_YEAR``.
-    if last_ts > 0:
-        start_year = max(_START_YEAR, datetime.fromtimestamp(last_ts, tz=UTC).year)
-    else:
-        start_year = _START_YEAR
-
-    for year in range(start_year, current_year + 1):
+    for year in range(_START_YEAR, current_year + 1):
         try:
             entries = await client.fetch_monthly_range(year)
         except Exception as err:
@@ -140,7 +120,7 @@ async def _collect_new_stats(
         _LOGGER.debug("Year %d: fetched %d entries", year, len(entries))
 
         for entry in entries:
-            stat = _entry_to_stat(entry, last_ts, running_sum)
+            stat = _entry_to_stat(entry, running_sum)
             if stat is None:
                 continue
             running_sum = stat["sum"]
@@ -151,7 +131,6 @@ async def _collect_new_stats(
 
 def _entry_to_stat(
     entry: dict[str, Any],
-    last_ts: float,
     running_sum: float,
 ) -> StatisticData | None:
     """Convert a portal entry to :class:`StatisticData`, or skip it."""
@@ -170,8 +149,6 @@ def _entry_to_stat(
             microsecond=0,
         )
     )
-    if dt.timestamp() <= last_ts:
-        return None
 
     consumption = round(float(value), 3)
     return StatisticData(

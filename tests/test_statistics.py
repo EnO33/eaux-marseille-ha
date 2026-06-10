@@ -6,7 +6,6 @@ These tests require a full Home Assistant environment and only run in CI.
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
 from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
@@ -39,16 +38,6 @@ def mock_recorder(hass: HomeAssistant):
 
 
 @pytest.fixture
-def mock_get_last_stats():
-    """Mock get_last_statistics to return no existing data."""
-    with patch(
-        "custom_components.eaux_marseille.statistics.get_last_statistics",
-        return_value={},
-    ) as mock:
-        yield mock
-
-
-@pytest.fixture
 def mock_add_external_stats():
     """Mock async_add_external_statistics."""
     with patch(
@@ -57,15 +46,27 @@ def mock_add_external_stats():
         yield mock
 
 
+def _only_year(target_year: int, entries: list):
+    """Return a fetch_monthly_range side effect that serves entries for one year.
+
+    Year-independent so the test doesn't break when the CI clock rolls
+    into a new year (the importer walks _START_YEAR..current_year).
+    """
+
+    def _side_effect(year: int):
+        return entries if year == target_year else []
+
+    return _side_effect
+
+
 async def test_import_creates_statistics(
     hass: HomeAssistant,
     mock_client: MagicMock,
     mock_recorder,
-    mock_get_last_stats,
     mock_add_external_stats,
 ) -> None:
     """Import creates statistics from monthly data."""
-    mock_client.fetch_monthly_range.side_effect = [MOCK_MONTHLY_ENTRIES, [], []]
+    mock_client.fetch_monthly_range.side_effect = _only_year(2024, MOCK_MONTHLY_ENTRIES)
 
     await async_import_historical_statistics(hass, mock_client, MOCK_CONTRACT_ID)
 
@@ -91,38 +92,41 @@ async def test_import_creates_statistics(
     assert stats[2]["sum"] == 9.5
 
 
-async def test_import_skips_existing(
+async def test_import_reimports_full_series_every_run(
     hass: HomeAssistant,
     mock_client: MagicMock,
     mock_recorder,
     mock_add_external_stats,
 ) -> None:
-    """Import skips entries older than the last imported timestamp."""
-    last_ts = datetime(2024, 8, 15, tzinfo=UTC).timestamp()
-    statistic_id = f"{DOMAIN}:monthly_consumption_{MOCK_CONTRACT_ID}"
+    """The full series is re-derived on every run, not skipped (#31).
 
-    with patch(
-        "custom_components.eaux_marseille.statistics.get_last_statistics",
-        return_value={statistic_id: [{"start": last_ts, "sum": 7.5}]},
-    ):
-        mock_client.fetch_monthly_range.side_effect = [MOCK_MONTHLY_ENTRIES, [], []]
-        await async_import_historical_statistics(hass, mock_client, MOCK_CONTRACT_ID)
+    The importer no longer reads the last-imported timestamp, so months
+    are never skipped: a partial/stale month gets overwritten with its
+    current value. Running the import twice produces the identical full
+    series both times.
+    """
+    mock_client.fetch_monthly_range.side_effect = _only_year(2024, MOCK_MONTHLY_ENTRIES)
+    await async_import_historical_statistics(hass, mock_client, MOCK_CONTRACT_ID)
+    first = mock_add_external_stats.call_args.args[2]
 
-    mock_add_external_stats.assert_called_once()
-    stats = mock_add_external_stats.call_args.args[2]
-    assert len(stats) == 1
-    assert stats[0]["state"] == 2.0
-    assert stats[0]["sum"] == 9.5
+    mock_add_external_stats.reset_mock()
+    mock_client.fetch_monthly_range.side_effect = _only_year(2024, MOCK_MONTHLY_ENTRIES)
+    await async_import_historical_statistics(hass, mock_client, MOCK_CONTRACT_ID)
+    second = mock_add_external_stats.call_args.args[2]
+
+    # Same full 3-month series each time — nothing is skipped on re-run.
+    assert len(first) == len(second) == 3
+    assert [s["start"] for s in first] == [s["start"] for s in second]
+    assert [s["sum"] for s in first] == [s["sum"] for s in second] == [3.0, 7.5, 9.5]
 
 
-async def test_import_no_new_data(
+async def test_import_no_data(
     hass: HomeAssistant,
     mock_client: MagicMock,
     mock_recorder,
-    mock_get_last_stats,
     mock_add_external_stats,
 ) -> None:
-    """Import does nothing when API returns no entries."""
+    """Import does nothing when the portal returns no entries for any year."""
     mock_client.fetch_monthly_range.return_value = []
 
     await async_import_historical_statistics(hass, mock_client, MOCK_CONTRACT_ID)
@@ -134,15 +138,18 @@ async def test_import_handles_api_failure(
     hass: HomeAssistant,
     mock_client: MagicMock,
     mock_recorder,
-    mock_get_last_stats,
     mock_add_external_stats,
 ) -> None:
     """Import continues when one year fails to fetch."""
-    mock_client.fetch_monthly_range.side_effect = [
-        Exception("API down"),
-        MOCK_MONTHLY_ENTRIES,
-        [],
-    ]
+
+    def _side_effect(year: int):
+        if year == 2024:
+            raise RuntimeError("API down")
+        if year == 2025:
+            return MOCK_MONTHLY_ENTRIES
+        return []
+
+    mock_client.fetch_monthly_range.side_effect = _side_effect
 
     await async_import_historical_statistics(hass, mock_client, MOCK_CONTRACT_ID)
 
@@ -155,19 +162,17 @@ async def test_import_skips_entries_without_date(
     hass: HomeAssistant,
     mock_client: MagicMock,
     mock_recorder,
-    mock_get_last_stats,
     mock_add_external_stats,
 ) -> None:
     """Import skips entries with missing date or volume."""
-    mock_client.fetch_monthly_range.side_effect = [
+    mock_client.fetch_monthly_range.side_effect = _only_year(
+        2024,
         [
             {"dateReleve": "", "volumeConsoEnM3": 3.0},
             {"dateReleve": "2024-07-15T00:00:00+02:00", "volumeConsoEnM3": None},
             {"dateReleve": "2024-08-15T00:00:00+02:00", "volumeConsoEnM3": 4.5},
         ],
-        [],
-        [],
-    ]
+    )
 
     await async_import_historical_statistics(hass, mock_client, MOCK_CONTRACT_ID)
 
