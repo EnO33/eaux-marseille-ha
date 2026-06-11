@@ -114,6 +114,8 @@ def mock_client() -> MagicMock:
     client.authenticate = AsyncMock(return_value=None)
     client.fetch = AsyncMock(return_value=MOCK_CONSUMPTION)
     client.fetch_monthly_range = AsyncMock(return_value=MOCK_MONTHLY_ENTRIES)
+    client.fetch_daily_range = AsyncMock(return_value=[])
+    client.is_daily_available = AsyncMock(return_value=False)
     client.close = AsyncMock(return_value=None)
     return client
 

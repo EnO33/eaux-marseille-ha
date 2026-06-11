@@ -96,6 +96,11 @@ def mock_auth() -> aioresponses:
             f"{_API_BASE}/Abonnement/getContratParDefaut/",
             payload={"numContrat": CONTRACT_ID},
         )
+        # Daily-telemetry probe: default to a monthly-only contract.
+        m.get(
+            f"{_API_BASE}/Consommation/isContratTelereve/{CONTRACT_ID}",
+            payload=False,
+        )
         yield m
 
 
@@ -575,6 +580,146 @@ class TestFreshContract:
         assert entries == []
 
 
+class TestDailyTelemetry:
+    """Contracts with daily telemetry (JOURNEE) get a fresher index."""
+
+    def _register_data_endpoints(self, m: aioresponses, *, repeat: bool = False) -> None:
+        """Register the three standard consumption endpoints."""
+        m.get(
+            f"{_API_BASE}/TableauDeBord/derniereConsommationFacturee/{CONTRACT_ID}",
+            payload={"valeurIndex": 212.0, "volumeConsoEnM3": 19.0},
+            repeat=repeat,
+        )
+        m.get(
+            re.compile(r".*listeConsommationsInstanceAlerteChart.*/MOIS/true"),
+            payload={
+                "consommations": [
+                    {"volumeConsoEnM3": 2.337, "valeurIndex": 212982},
+                ]
+            },
+            repeat=repeat,
+        )
+        m.get(
+            f"{_API_BASE}/Facturation/listeConsommationsFacturees/{CONTRACT_ID}",
+            payload={"nbTotalResultats": 1, "resultats": [{"volumeConsoEnM3": 19.0}]},
+            repeat=repeat,
+        )
+
+    async def test_daily_index_preferred_when_available(
+        self, client: EauxDeMarseilleClient
+    ) -> None:
+        """When the probe says daily is available, index_precise comes from
+        the freshest JOURNEE entry instead of the monthly chart."""
+        with aioresponses() as m:
+            m.get(_PORTAL_URL + "/", body="<html></html>")
+            m.post(
+                f"{_API_BASE}/Acces/generateToken",
+                payload={"token": "fake-temp-token"},
+            )
+            m.post(
+                f"{_API_BASE}/Utilisateur/authentification",
+                payload={
+                    "tokenAuthentique": "fake-ael-token",
+                    "utilisateurInfo": {"identifiant": "user@example.com"},
+                },
+            )
+            m.get(
+                f"{_API_BASE}/Abonnement/getContratParDefaut/",
+                payload={"numContrat": CONTRACT_ID},
+            )
+            self._register_data_endpoints(m)
+            m.get(
+                f"{_API_BASE}/Consommation/isContratTelereve/{CONTRACT_ID}",
+                payload=True,
+            )
+            # Daily series: latest entry is fresher (213105 L) than monthly.
+            m.get(
+                re.compile(r".*listeConsommationsInstanceAlerteChart.*/JOURNEE/true"),
+                payload={
+                    "consommations": [
+                        {"volumeConsoEnM3": 0.2, "valeurIndex": 212900},
+                        {"volumeConsoEnM3": 0.205, "valeurIndex": 213105},
+                    ]
+                },
+            )
+
+            data = await client.fetch()
+
+        assert data.index_precise_m3 == 213.105
+
+    async def test_monthly_only_contract_skips_daily(
+        self, client: EauxDeMarseilleClient, mock_auth: aioresponses
+    ) -> None:
+        """Probe returns False (mock_auth default): no JOURNEE call is
+        made, index_precise falls back to the monthly chart value."""
+        self._register_data_endpoints(mock_auth)
+        # Note: no JOURNEE mock registered. If the client called it anyway,
+        # aioresponses would raise on the unmatched request.
+        data = await client.fetch()
+        assert data.index_precise_m3 == 212.982
+
+    async def test_probe_is_cached_across_fetches(
+        self, client: EauxDeMarseilleClient, mock_auth: aioresponses
+    ) -> None:
+        """The telereve probe runs once; later fetches reuse the answer.
+
+        mock_auth registers the probe exactly once (non-repeating): a
+        second probe call would hit an unmatched URL and raise.
+        """
+        self._register_data_endpoints(mock_auth, repeat=True)
+        await client.fetch()
+        await client.fetch()
+
+    async def test_probe_error_defaults_to_monthly_only(
+        self, client: EauxDeMarseilleClient
+    ) -> None:
+        """A failing probe (404) degrades to monthly-only, not a crash."""
+        with aioresponses() as m:
+            m.get(_PORTAL_URL + "/", body="<html></html>")
+            m.post(
+                f"{_API_BASE}/Acces/generateToken",
+                payload={"token": "fake-temp-token"},
+            )
+            m.post(
+                f"{_API_BASE}/Utilisateur/authentification",
+                payload={
+                    "tokenAuthentique": "fake-ael-token",
+                    "utilisateurInfo": {"identifiant": "user@example.com"},
+                },
+            )
+            m.get(
+                f"{_API_BASE}/Abonnement/getContratParDefaut/",
+                payload={"numContrat": CONTRACT_ID},
+            )
+            self._register_data_endpoints(m)
+            m.get(
+                f"{_API_BASE}/Consommation/isContratTelereve/{CONTRACT_ID}",
+                status=404,
+            )
+
+            data = await client.fetch()
+
+        # Fallback to the monthly index; no exception raised.
+        assert data.index_precise_m3 == 212.982
+
+    async def test_fetch_daily_range_returns_entries(
+        self, client: EauxDeMarseilleClient, mock_auth: aioresponses
+    ) -> None:
+        """fetch_daily_range returns the consommations list."""
+        mock_auth.get(
+            re.compile(r".*listeConsommationsInstanceAlerteChart.*/JOURNEE/true"),
+            payload={
+                "consommations": [
+                    {"dateReleve": "2026-06-09T00:00:00+02:00", "volumeConsoEnM3": 0.2},
+                ]
+            },
+        )
+        await client.authenticate()
+        entries = await client.fetch_daily_range(2026)
+        assert len(entries) == 1
+        assert entries[0]["volumeConsoEnM3"] == 0.2
+
+
 class TestSessionRecovery:
     """Test that the client caches auth and recovers from session expiry."""
 
@@ -709,7 +854,11 @@ class TestSessionRecovery:
 
 
 def _register_auth_flow(m: aioresponses) -> None:
-    """Register the four endpoints of one full auth flow."""
+    """Register the four endpoints of one full auth flow (+ daily probe)."""
+    m.get(
+        f"{_API_BASE}/Consommation/isContratTelereve/{CONTRACT_ID}",
+        payload=False,
+    )
     m.get(_PORTAL_URL + "/", body="<html></html>")
     m.post(
         f"{_API_BASE}/Acces/generateToken",

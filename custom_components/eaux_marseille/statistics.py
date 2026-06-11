@@ -1,7 +1,8 @@
 """Historical statistics importer for Eaux de Marseille.
 
 Backfills monthly water consumption into the Home Assistant recorder
-using the external-statistics API.
+using the external-statistics API — plus a daily series for contracts
+whose meter exposes daily telemetry (JOURNEE granularity).
 
 The full monthly series is re-imported on every run and the recorder
 points are overwritten (``async_add_external_statistics`` upserts by
@@ -17,6 +18,7 @@ correct and is self-healing for already-corrupted statistics.
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -63,13 +65,16 @@ async def async_import_historical_statistics(
         instance = get_instance(hass)
         await instance.async_db_ready
 
-        statistic_id = f"{DOMAIN}:monthly_consumption_{contract_id}"
-
         _LOGGER.debug("Starting statistics (re)import for contract %s", contract_id)
 
-        stats = await _collect_all_stats(client)
+        stats = await _collect_series(client.fetch_monthly_range)
         if stats:
-            async_add_external_statistics(hass, _build_metadata(contract_id, statistic_id), stats)
+            statistic_id = f"{DOMAIN}:monthly_consumption_{contract_id}"
+            async_add_external_statistics(
+                hass,
+                _build_metadata(contract_id, statistic_id, "Monthly consumption"),
+                stats,
+            )
             _LOGGER.info(
                 "Imported %d monthly statistics for contract %s (total sum: %s m³)",
                 len(stats),
@@ -81,6 +86,30 @@ async def async_import_historical_statistics(
                 "No monthly statistics available to import for contract %s",
                 contract_id,
             )
+
+        # Contracts with daily telemetry (JOURNEE granularity) also get a
+        # daily statistic. Other contracts skip this entirely — the probe
+        # is cached on the client so this costs one extra GET, once.
+        if await client.is_daily_available():
+            daily_stats = await _collect_series(client.fetch_daily_range)
+            if daily_stats:
+                statistic_id = f"{DOMAIN}:daily_consumption_{contract_id}"
+                async_add_external_statistics(
+                    hass,
+                    _build_metadata(contract_id, statistic_id, "Daily consumption"),
+                    daily_stats,
+                )
+                _LOGGER.info(
+                    "Imported %d daily statistics for contract %s (total sum: %s m³)",
+                    len(daily_stats),
+                    contract_id,
+                    daily_stats[-1]["sum"],
+                )
+            else:
+                _LOGGER.debug(
+                    "Daily telemetry available but no daily entries for contract %s",
+                    contract_id,
+                )
     except Exception:
         _LOGGER.exception("Error during historical statistics import")
         ir.async_create_issue(
@@ -98,14 +127,16 @@ async def async_import_historical_statistics(
     ir.async_delete_issue(hass, DOMAIN, issue_id)
 
 
-async def _collect_all_stats(
-    client: EauxDeMarseilleClient,
+async def _collect_series(
+    fetch_range: Callable[[int], Awaitable[list[dict[str, Any]]]],
 ) -> list[StatisticData]:
-    """Fetch every month from ``_START_YEAR`` to now and build the series.
+    """Fetch every entry from ``_START_YEAR`` to now and build the series.
 
-    The cumulative ``sum`` is recomputed from zero over the full series
-    every time, so overwriting the recorder points yields an internally
-    consistent set whatever the portal has revised since the last run.
+    ``fetch_range`` is a per-year fetcher (monthly or daily — same entry
+    shape either way). The cumulative ``sum`` is recomputed from zero
+    over the full series every time, so overwriting the recorder points
+    yields an internally consistent set whatever the portal has revised
+    since the last run.
     """
     stats: list[StatisticData] = []
     running_sum = 0.0
@@ -113,7 +144,7 @@ async def _collect_all_stats(
 
     for year in range(_START_YEAR, current_year + 1):
         try:
-            entries = await client.fetch_monthly_range(year)
+            entries = await fetch_range(year)
         except Exception as err:
             _LOGGER.warning("Could not fetch history for %d: %s", year, err)
             continue
@@ -158,8 +189,8 @@ def _entry_to_stat(
     )
 
 
-def _build_metadata(contract_id: str, statistic_id: str) -> StatisticMetaData:
-    """Build the recorder metadata for the monthly-consumption statistic.
+def _build_metadata(contract_id: str, statistic_id: str, label: str) -> StatisticMetaData:
+    """Build the recorder metadata for a consumption statistic.
 
     ``mean_type=StatisticMeanType.NONE`` is the canonical replacement for
     the legacy ``has_mean=False`` flag (which HA core deprecated and
@@ -170,7 +201,7 @@ def _build_metadata(contract_id: str, statistic_id: str) -> StatisticMetaData:
     metadata: StatisticMetaData = {
         "mean_type": StatisticMeanType.NONE,
         "has_sum": True,
-        "name": f"Eaux de Marseille {contract_id} — Monthly consumption",
+        "name": f"Eaux de Marseille {contract_id} — {label}",
         "source": DOMAIN,
         "statistic_id": statistic_id,
         "unit_class": None,

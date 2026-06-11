@@ -54,6 +54,8 @@ L'intégration récupère votre consommation d'eau depuis le portail choisi tout
 
 Une **statistique externe mensuelle** est également importée sous l'identifiant `eaux_marseille:monthly_consumption_<contrat>` — utilisable dans les cartes `statistics-graph` et le tableau de bord Énergie.
 
+Les contrats dont le compteur expose la **télérelève journalière** (compteurs communicants avec la granularité `JOURNEE` activée sur le portail) bénéficient en plus d'une **statistique externe journalière** sous `eaux_marseille:daily_consumption_<contrat>`, et le capteur d'index précis est alimenté par la série journalière (à jour à J-1 en général). La détection est automatique ; les contrats en relevé trimestriel conservent le comportement mensuel actuel.
+
 ## Cas d'usage
 
 ### Suivre l'eau dans le tableau de bord Énergie

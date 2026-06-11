@@ -54,6 +54,8 @@ It pulls your water consumption from the chosen portal every hour and exposes it
 
 A **monthly external statistic** is also imported under the ID `eaux_marseille:monthly_consumption_<contract>` — usable in `statistics-graph` cards and the Energy dashboard.
 
+Contracts whose meter exposes **daily telemetry** (communicating meters with the `JOURNEE` granularity enabled on the portal) additionally get a **daily external statistic** under `eaux_marseille:daily_consumption_<contract>`, and the precise meter index sensor is fed from the daily series (typically up to date as of yesterday). Detection is automatic; quarterly-read contracts keep the monthly-only behaviour.
+
 ## Use cases
 
 ### Track water on the Energy dashboard

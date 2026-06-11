@@ -158,6 +158,52 @@ async def test_import_handles_api_failure(
     assert len(stats) == 3
 
 
+async def test_daily_statistic_imported_when_telemetry_available(
+    hass: HomeAssistant,
+    mock_client: MagicMock,
+    mock_recorder,
+    mock_add_external_stats,
+) -> None:
+    """Contracts with daily telemetry also get a daily statistic (#29)."""
+    mock_client.is_daily_available.return_value = True
+    mock_client.fetch_monthly_range.side_effect = _only_year(2024, MOCK_MONTHLY_ENTRIES)
+    mock_client.fetch_daily_range.side_effect = _only_year(
+        2024,
+        [
+            {"dateReleve": "2024-07-15T00:00:00+02:00", "volumeConsoEnM3": 0.2},
+            {"dateReleve": "2024-07-16T00:00:00+02:00", "volumeConsoEnM3": 0.3},
+        ],
+    )
+
+    await async_import_historical_statistics(hass, mock_client, MOCK_CONTRACT_ID)
+
+    # Two imports: monthly first, then daily.
+    assert mock_add_external_stats.call_count == 2
+    daily_metadata = mock_add_external_stats.call_args_list[1].args[1]
+    daily_stats = mock_add_external_stats.call_args_list[1].args[2]
+    assert daily_metadata["statistic_id"] == f"{DOMAIN}:daily_consumption_{MOCK_CONTRACT_ID}"
+    assert "Daily consumption" in daily_metadata["name"]
+    assert len(daily_stats) == 2
+    assert daily_stats[0]["sum"] == 0.2
+    assert daily_stats[1]["sum"] == 0.5
+
+
+async def test_no_daily_statistic_for_monthly_only_contract(
+    hass: HomeAssistant,
+    mock_client: MagicMock,
+    mock_recorder,
+    mock_add_external_stats,
+) -> None:
+    """Monthly-only contracts (probe False) get exactly one import."""
+    mock_client.is_daily_available.return_value = False
+    mock_client.fetch_monthly_range.side_effect = _only_year(2024, MOCK_MONTHLY_ENTRIES)
+
+    await async_import_historical_statistics(hass, mock_client, MOCK_CONTRACT_ID)
+
+    assert mock_add_external_stats.call_count == 1
+    mock_client.fetch_daily_range.assert_not_called()
+
+
 async def test_import_skips_entries_without_date(
     hass: HomeAssistant,
     mock_client: MagicMock,

@@ -97,6 +97,10 @@ class EauxDeMarseilleClient:
             login=login,
             password=password,
         )
+        # Whether the contract exposes daily telemetry (JOURNEE granularity).
+        # Probed lazily on first use and cached for the client's lifetime;
+        # None means "not checked yet".
+        self._daily_available: bool | None = None
 
     async def close(self) -> None:
         """Close the underlying session if we own it."""
@@ -128,20 +132,55 @@ class EauxDeMarseilleClient:
 
     async def fetch_monthly_range(self, year: int) -> list[dict[str, Any]]:
         """Return the raw monthly consumption entries for ``year``."""
-        return await self._with_session_recovery(lambda: self._fetch_monthly_inner(year))
+        return await self._with_session_recovery(lambda: self._fetch_chart_inner(year, "MOIS"))
+
+    async def fetch_daily_range(self, year: int) -> list[dict[str, Any]]:
+        """Return the raw daily consumption entries for ``year``.
+
+        Only meaningful for contracts where :meth:`is_daily_available`
+        returns ``True``; other contracts get the portal's soft 400,
+        which degrades to an empty list.
+        """
+        return await self._with_session_recovery(lambda: self._fetch_chart_inner(year, "JOURNEE"))
+
+    async def is_daily_available(self) -> bool:
+        """Whether the contract exposes daily telemetry (JOURNEE).
+
+        Probes ``/Consommation/isContratTelereve/{contract}`` once and
+        caches the answer for the client's lifetime. Any error during
+        the probe is treated as ``False`` (conservative: fall back to
+        monthly-only behaviour rather than failing the poll).
+        """
+        if self._daily_available is None:
+            try:
+                result = await self._with_session_recovery(
+                    lambda: self._auth.get(f"/Consommation/isContratTelereve/{self._contract_id}")
+                )
+                # The endpoint returns a bare JSON boolean, not an object.
+                self._daily_available = bool(result)
+            except EauxDeMarseilleError as err:
+                _LOGGER.debug("Daily-telemetry probe failed, assuming monthly-only: %s", err)
+                self._daily_available = False
+        return self._daily_available
 
     async def _fetch_inner(self) -> ConsumptionData:
         last = await self._safe_get(
             f"/TableauDeBord/derniereConsommationFacturee/{self._contract_id}"
         )
-        monthly = await self._safe_get(self._monthly_path(datetime.now(UTC).year))
+        year = datetime.now(UTC).year
+        monthly = await self._safe_get(self._chart_path(year, "MOIS"))
         history = await self._safe_get(
             f"/Facturation/listeConsommationsFacturees/{self._contract_id}"
         )
-        return ConsumptionData.from_api_responses(last, monthly, history)
+        # Contracts with daily telemetry carry a fresher meter index in
+        # the JOURNEE series (typically D-1) than the monthly chart.
+        daily: dict[str, Any] = {}
+        if await self.is_daily_available():
+            daily = await self._safe_get(self._chart_path(year, "JOURNEE"))
+        return ConsumptionData.from_api_responses(last, monthly, history, daily=daily)
 
-    async def _fetch_monthly_inner(self, year: int) -> list[dict[str, Any]]:
-        data = await self._safe_get(self._monthly_path(year))
+    async def _fetch_chart_inner(self, year: int, granularity: str) -> list[dict[str, Any]]:
+        data = await self._safe_get(self._chart_path(year, granularity))
         entries: list[dict[str, Any]] = data.get("consommations", [])
         return entries
 
@@ -191,13 +230,18 @@ class EauxDeMarseilleClient:
             await self._auth.authenticate()
             return await action()
 
-    def _monthly_path(self, year: int) -> str:
-        """Build the monthly consumption endpoint path for ``year``."""
+    def _chart_path(self, year: int, granularity: str) -> str:
+        """Build the consumption-chart endpoint path for ``year``.
+
+        ``granularity`` is one of the portal's codes (``MOIS``,
+        ``JOURNEE``, ``SEMAINE``, ``TRIMESTRE``); availability per
+        contract is reported by ``/Acces/autorisations``.
+        """
         start = int(datetime(year, 1, 1, tzinfo=UTC).timestamp())
         end = int(datetime(year, 12, 31, 23, 59, 59, tzinfo=UTC).timestamp())
         return (
             f"/Consommation/listeConsommationsInstanceAlerteChart/"
-            f"{self._contract_id}/{start}/{end}/MOIS/true"
+            f"{self._contract_id}/{start}/{end}/{granularity}/true"
         )
 
 
