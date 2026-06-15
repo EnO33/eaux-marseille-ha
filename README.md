@@ -56,6 +56,8 @@ A **monthly external statistic** is also imported under the ID `eaux_marseille:m
 
 Contracts whose meter exposes **daily telemetry** (communicating meters with the `JOURNEE` granularity enabled on the portal) additionally get a **daily external statistic** under `eaux_marseille:daily_consumption_<contract>`, and the precise meter index sensor is fed from the daily series (typically up to date as of yesterday). Detection is automatic; quarterly-read contracts keep the monthly-only behaviour.
 
+> **External statistics vs. entities.** The `eaux_marseille:…` IDs above (note the colon) are *external statistics*, not entities. They appear in **statistic** pickers — the Energy dashboard's water source and the `statistics-graph` card — but **not** in the generic *entity* picker you get when adding most cards, and not in the History tab. To chart them from the UI, use a `statistics-graph` card (its picker lists statistics) or paste the ID in YAML. If a card asks for an *entity*, use one of the `sensor.…` rows instead — in particular `…_index_compteur_precis`, a `total_increasing` water sensor that also works directly as an Energy water source.
+
 ## Use cases
 
 ### Track water on the Energy dashboard

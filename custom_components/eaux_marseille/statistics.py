@@ -215,8 +215,18 @@ def _build_metadata(contract_id: str, statistic_id: str, label: str) -> Statisti
     ``mean_type=StatisticMeanType.NONE`` is the canonical replacement for
     the legacy ``has_mean=False`` flag (which HA core deprecated and
     removed in 2026.4). Water consumption is a counter, so no mean is
-    recorded. ``unit_class=None`` lets HA derive the unit class from
-    ``unit_of_measurement``.
+    recorded.
+
+    ``unit_class`` must be set explicitly to the volume class. The
+    recorder does not derive it for external statistics, and the Energy
+    dashboard's water source picker filters strictly on
+    ``unit_class == "volume"`` (the statistics-graph card's picker does
+    too) — leaving it ``None`` makes the statistic invisible in both, even
+    though its unit is m³. Entity-backed water statistics get ``"volume"``
+    automatically; we mirror that. The literal matches
+    ``homeassistant.util.unit_conversion.VolumeConverter.UNIT_CLASS`` (not
+    imported, to keep this module loadable under the lightweight test
+    stubs).
     """
     metadata: StatisticMetaData = {
         "mean_type": StatisticMeanType.NONE,
@@ -224,7 +234,7 @@ def _build_metadata(contract_id: str, statistic_id: str, label: str) -> Statisti
         "name": f"Eaux de Marseille {contract_id} — {label}",
         "source": DOMAIN,
         "statistic_id": statistic_id,
-        "unit_class": None,
+        "unit_class": "volume",
         "unit_of_measurement": UnitOfVolume.CUBIC_METERS,
     }
     return metadata
