@@ -44,7 +44,7 @@ class ConsumptionData:
         last_billed: dict[str, Any],
         monthly: dict[str, Any],
         history: dict[str, Any],
-        daily: dict[str, Any] | None = None,
+        daily_entries: list[dict[str, Any]] | None = None,
     ) -> ConsumptionData:
         """Build a :class:`ConsumptionData` from the endpoint payloads.
 
@@ -58,24 +58,27 @@ class ConsumptionData:
             ``/Consommation/listeConsommationsInstanceAlerteChart/.../MOIS/true``.
         :param history: Payload from
             ``/Facturation/listeConsommationsFacturees/{contract}``.
-        :param daily: Optional payload from the same chart endpoint with
-            ``JOURNEE`` granularity — only available on contracts with
-            daily telemetry. When present, its latest entry carries a
-            fresher meter index (typically D-1) than the monthly chart,
-            and is preferred for :attr:`index_precise_m3`.
+        :param daily_entries: Optional ``consommations`` list from the same
+            chart endpoint with ``JOURNEE`` granularity — only present on
+            contracts with daily telemetry. Its most recent entry carries a
+            fresher meter index (typically D-1) than the monthly chart, so
+            it is preferred for :attr:`index_precise_m3`. The portal serves
+            this series newest-first, hence the explicit max-by-date below
+            instead of relying on list position.
         """
         readings = history.get("resultats", [])
         previous = readings[1] if len(readings) > 1 else {}
 
         monthly_entries = monthly.get("consommations", [])
+        # The monthly chart comes back chronological, so the last entry is
+        # the current month.
         current_month = monthly_entries[-1] if monthly_entries else {}
         year_total = round(
             sum(entry.get("volumeConsoEnM3", 0.0) for entry in monthly_entries),
             3,
         )
 
-        daily_entries = (daily or {}).get("consommations", [])
-        latest_daily = daily_entries[-1] if daily_entries else {}
+        latest_daily = _latest_by_date(daily_entries or [])
         index_precise = _litres_to_m3(latest_daily.get("valeurIndex"))
         if index_precise is None:
             index_precise = _litres_to_m3(current_month.get("valeurIndex"))
@@ -100,6 +103,19 @@ class ConsumptionData:
 def _iso_date_prefix(value: str | None) -> str | None:
     """Return the ``YYYY-MM-DD`` prefix of an ISO datetime, or ``None``."""
     return value[:10] if value else None
+
+
+def _latest_by_date(entries: list[dict[str, Any]]) -> dict[str, Any]:
+    """Return the entry with the most recent ``dateReleve``, or ``{}``.
+
+    Used for the daily (``JOURNEE``) series, which the portal serves
+    newest-first — so the freshest reading is *not* the last list item.
+    ISO 8601 strings with a fixed UTC offset sort lexicographically,
+    which is all we need to find the newest day.
+    """
+    if not entries:
+        return {}
+    return max(entries, key=lambda entry: entry.get("dateReleve", ""))
 
 
 def _litres_to_m3(litres: float | int | None) -> float | None:
