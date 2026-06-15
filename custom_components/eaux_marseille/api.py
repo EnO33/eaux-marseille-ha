@@ -97,10 +97,6 @@ class EauxDeMarseilleClient:
             login=login,
             password=password,
         )
-        # Whether the contract exposes daily telemetry (JOURNEE granularity).
-        # Probed lazily on first use and cached for the client's lifetime;
-        # None means "not checked yet".
-        self._daily_available: bool | None = None
 
     async def close(self) -> None:
         """Close the underlying session if we own it."""
@@ -132,36 +128,20 @@ class EauxDeMarseilleClient:
 
     async def fetch_monthly_range(self, year: int) -> list[dict[str, Any]]:
         """Return the raw monthly consumption entries for ``year``."""
-        return await self._with_session_recovery(lambda: self._fetch_chart_inner(year, "MOIS"))
+        return await self._with_session_recovery(lambda: self._chart_entries(year, "MOIS"))
 
     async def fetch_daily_range(self, year: int) -> list[dict[str, Any]]:
         """Return the raw daily consumption entries for ``year``.
 
-        Only meaningful for contracts where :meth:`is_daily_available`
-        returns ``True``; other contracts get the portal's soft 400,
-        which degrades to an empty list.
+        Daily data only exists for contracts whose meter exposes it
+        (communicating meters with JOURNEE granularity enabled).
+        Contracts without it get an empty list — the fetch is tolerant
+        of the portal refusing the endpoint (soft 400, hard 4xx), so it
+        never breaks callers.
         """
-        return await self._with_session_recovery(lambda: self._fetch_chart_inner(year, "JOURNEE"))
-
-    async def is_daily_available(self) -> bool:
-        """Whether the contract exposes daily telemetry (JOURNEE).
-
-        Probes ``/Consommation/isContratTelereve/{contract}`` once and
-        caches the answer for the client's lifetime. Any error during
-        the probe is treated as ``False`` (conservative: fall back to
-        monthly-only behaviour rather than failing the poll).
-        """
-        if self._daily_available is None:
-            try:
-                result = await self._with_session_recovery(
-                    lambda: self._auth.get(f"/Consommation/isContratTelereve/{self._contract_id}")
-                )
-                # The endpoint returns a bare JSON boolean, not an object.
-                self._daily_available = bool(result)
-            except EauxDeMarseilleError as err:
-                _LOGGER.debug("Daily-telemetry probe failed, assuming monthly-only: %s", err)
-                self._daily_available = False
-        return self._daily_available
+        return await self._with_session_recovery(
+            lambda: self._chart_entries(year, "JOURNEE", optional=True)
+        )
 
     async def _fetch_inner(self) -> ConsumptionData:
         last = await self._safe_get(
@@ -172,15 +152,45 @@ class EauxDeMarseilleClient:
         history = await self._safe_get(
             f"/Facturation/listeConsommationsFacturees/{self._contract_id}"
         )
-        # Contracts with daily telemetry carry a fresher meter index in
-        # the JOURNEE series (typically D-1) than the monthly chart.
-        daily: dict[str, Any] = {}
-        if await self.is_daily_available():
-            daily = await self._safe_get(self._chart_path(year, "JOURNEE"))
-        return ConsumptionData.from_api_responses(last, monthly, history, daily=daily)
+        # Always attempt the daily series: when the contract exposes it
+        # (communicating meter) its latest entry carries a fresher index
+        # (D-1) than the monthly chart. Tolerant — contracts without
+        # daily data just get an empty list. No upfront probe needed: the
+        # mere presence of entries tells us whether the meter is daily.
+        daily_entries = await self._chart_entries(year, "JOURNEE", optional=True)
+        return ConsumptionData.from_api_responses(
+            last, monthly, history, daily_entries=daily_entries
+        )
 
-    async def _fetch_chart_inner(self, year: int, granularity: str) -> list[dict[str, Any]]:
-        data = await self._safe_get(self._chart_path(year, granularity))
+    async def _chart_entries(
+        self, year: int, granularity: str, *, optional: bool = False
+    ) -> list[dict[str, Any]]:
+        """Return the ``consommations`` list for a chart granularity.
+
+        For a required series (monthly) this goes through
+        :meth:`_safe_get`, which tolerates the portal's soft 400 ("no
+        data yet" on a fresh contract) and logs it at INFO.
+
+        For an ``optional=True`` series (the daily JOURNEE chart, which
+        most contracts don't expose), any API error other than a session
+        expiry is swallowed at DEBUG and an empty list returned — a
+        monthly-only contract gets that 400 on *every* poll, so it's the
+        normal case, not an anomaly worth an INFO line each time. Session
+        expiries are re-raised so :meth:`_with_session_recovery` can
+        re-authenticate and retry.
+        """
+        path = self._chart_path(year, granularity)
+        if not optional:
+            data = await self._safe_get(path)
+            required: list[dict[str, Any]] = data.get("consommations", [])
+            return required
+        try:
+            data = await self._auth.get(path)
+        except EauxDeMarseilleSessionExpiredError:
+            raise
+        except EauxDeMarseilleApiError as err:
+            _LOGGER.debug("Optional %s series unavailable: %s", granularity, err)
+            return []
         entries: list[dict[str, Any]] = data.get("consommations", [])
         return entries
 

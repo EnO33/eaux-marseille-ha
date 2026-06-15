@@ -87,29 +87,30 @@ async def async_import_historical_statistics(
                 contract_id,
             )
 
-        # Contracts with daily telemetry (JOURNEE granularity) also get a
-        # daily statistic. Other contracts skip this entirely — the probe
-        # is cached on the client so this costs one extra GET, once.
-        if await client.is_daily_available():
-            daily_stats = await _collect_series(client.fetch_daily_range)
-            if daily_stats:
-                statistic_id = f"{DOMAIN}:daily_consumption_{contract_id}"
-                async_add_external_statistics(
-                    hass,
-                    _build_metadata(contract_id, statistic_id, "Daily consumption"),
-                    daily_stats,
-                )
-                _LOGGER.info(
-                    "Imported %d daily statistics for contract %s (total sum: %s m³)",
-                    len(daily_stats),
-                    contract_id,
-                    daily_stats[-1]["sum"],
-                )
-            else:
-                _LOGGER.debug(
-                    "Daily telemetry available but no daily entries for contract %s",
-                    contract_id,
-                )
+        # Contracts whose meter exposes daily telemetry (JOURNEE
+        # granularity) also get a daily statistic. There's no upfront
+        # probe: ``fetch_daily_range`` is tolerant and returns an empty
+        # list for contracts without it, so a monthly-only contract just
+        # yields no daily series and we skip the import.
+        daily_stats = await _collect_series(client.fetch_daily_range)
+        if daily_stats:
+            statistic_id = f"{DOMAIN}:daily_consumption_{contract_id}"
+            async_add_external_statistics(
+                hass,
+                _build_metadata(contract_id, statistic_id, "Daily consumption"),
+                daily_stats,
+            )
+            _LOGGER.info(
+                "Imported %d daily statistics for contract %s (total sum: %s m³)",
+                len(daily_stats),
+                contract_id,
+                daily_stats[-1]["sum"],
+            )
+        else:
+            _LOGGER.debug(
+                "No daily telemetry to import for contract %s",
+                contract_id,
+            )
     except Exception:
         _LOGGER.exception("Error during historical statistics import")
         ir.async_create_issue(
@@ -137,6 +138,12 @@ async def _collect_series(
     over the full series every time, so overwriting the recorder points
     yields an internally consistent set whatever the portal has revised
     since the last run.
+
+    Entries are sorted chronologically before accumulating: the portal
+    serves the JOURNEE series newest-first, and feeding that order into a
+    running sum would assign the largest sum to the earliest day, leaving
+    a statistic whose cumulative total decreases over time (it would read
+    as empty/broken in the Energy dashboard).
     """
     stats: list[StatisticData] = []
     running_sum = 0.0
@@ -150,7 +157,7 @@ async def _collect_series(
             continue
         _LOGGER.debug("Year %d: fetched %d entries", year, len(entries))
 
-        for entry in entries:
+        for entry in sorted(entries, key=lambda e: e.get("dateReleve", "")):
             stat = _entry_to_stat(entry, running_sum)
             if stat is None:
                 continue

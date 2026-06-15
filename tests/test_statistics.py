@@ -164,14 +164,19 @@ async def test_daily_statistic_imported_when_telemetry_available(
     mock_recorder,
     mock_add_external_stats,
 ) -> None:
-    """Contracts with daily telemetry also get a daily statistic (#29)."""
-    mock_client.is_daily_available.return_value = True
+    """Contracts with daily telemetry also get a daily statistic (#29).
+
+    No probe: a non-empty ``fetch_daily_range`` is enough to trigger the
+    daily import. The entries arrive newest-first (as the portal serves
+    them); the importer must sort them so the cumulative sum increases
+    with time.
+    """
     mock_client.fetch_monthly_range.side_effect = _only_year(2024, MOCK_MONTHLY_ENTRIES)
     mock_client.fetch_daily_range.side_effect = _only_year(
         2024,
         [
-            {"dateReleve": "2024-07-15T00:00:00+02:00", "volumeConsoEnM3": 0.2},
             {"dateReleve": "2024-07-16T00:00:00+02:00", "volumeConsoEnM3": 0.3},
+            {"dateReleve": "2024-07-15T00:00:00+02:00", "volumeConsoEnM3": 0.2},
         ],
     )
 
@@ -183,6 +188,8 @@ async def test_daily_statistic_imported_when_telemetry_available(
     daily_stats = mock_add_external_stats.call_args_list[1].args[2]
     assert daily_metadata["statistic_id"] == f"{DOMAIN}:daily_consumption_{MOCK_CONTRACT_ID}"
     assert "Daily consumption" in daily_metadata["name"]
+    # Sorted chronologically despite the newest-first input, so the
+    # cumulative sum rises 0.2 -> 0.5 (15th then 16th).
     assert len(daily_stats) == 2
     assert daily_stats[0]["sum"] == 0.2
     assert daily_stats[1]["sum"] == 0.5
@@ -194,14 +201,18 @@ async def test_no_daily_statistic_for_monthly_only_contract(
     mock_recorder,
     mock_add_external_stats,
 ) -> None:
-    """Monthly-only contracts (probe False) get exactly one import."""
-    mock_client.is_daily_available.return_value = False
+    """Monthly-only contracts get exactly one import (no daily series).
+
+    ``fetch_daily_range`` is always called now, but returns an empty list
+    for contracts without daily telemetry, so no daily statistic lands.
+    """
     mock_client.fetch_monthly_range.side_effect = _only_year(2024, MOCK_MONTHLY_ENTRIES)
+    mock_client.fetch_daily_range.return_value = []
 
     await async_import_historical_statistics(hass, mock_client, MOCK_CONTRACT_ID)
 
     assert mock_add_external_stats.call_count == 1
-    mock_client.fetch_daily_range.assert_not_called()
+    mock_client.fetch_daily_range.assert_called()
 
 
 async def test_import_skips_entries_without_date(
