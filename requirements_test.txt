@@ -3,7 +3,7 @@
 # those pins here — pip resolves to whatever the upstream package wants,
 # which keeps us aligned with the version Home Assistant core itself
 # tests against.
-pytest-homeassistant-custom-component>=0.13.337
+pytest-homeassistant-custom-component>=0.13.339
 aioresponses>=0.7.8
 
 # Runtime dependencies declared in custom_components/eaux_marseille/manifest.json.
