@@ -215,6 +215,44 @@ async def test_no_daily_statistic_for_monthly_only_contract(
     mock_client.fetch_daily_range.assert_called()
 
 
+async def test_import_dedupes_year_boundary_day(
+    hass: HomeAssistant,
+    mock_client: MagicMock,
+    mock_recorder,
+    mock_add_external_stats,
+) -> None:
+    """A day returned by two adjacent yearly windows is counted once.
+
+    The portal's UTC year window can return a Jan-1 reading (whose
+    +02:00 dateReleve is 22:00 UTC on Dec 31) in both years. Without
+    dedup the boundary day would be summed twice and inflate the total.
+    """
+    boundary = {"dateReleve": "2026-01-01T00:00:00+02:00", "volumeConsoEnM3": 1.0}
+
+    def _side_effect(year: int):
+        if year == 2025:
+            return [
+                {"dateReleve": "2025-12-31T00:00:00+01:00", "volumeConsoEnM3": 2.0},
+                boundary,
+            ]
+        if year == 2026:
+            return [
+                boundary,
+                {"dateReleve": "2026-01-02T00:00:00+01:00", "volumeConsoEnM3": 3.0},
+            ]
+        return []
+
+    mock_client.fetch_monthly_range.side_effect = _side_effect
+
+    await async_import_historical_statistics(hass, mock_client, MOCK_CONTRACT_ID)
+
+    stats = mock_add_external_stats.call_args.args[2]
+    # Three distinct days (31/12, 01/01, 02/01); the boundary day counts once.
+    assert len(stats) == 3
+    assert [s["state"] for s in stats] == [2.0, 1.0, 3.0]
+    assert [s["sum"] for s in stats] == [2.0, 3.0, 6.0]
+
+
 async def test_import_skips_entries_without_date(
     hass: HomeAssistant,
     mock_client: MagicMock,
