@@ -139,14 +139,20 @@ async def _collect_series(
     yields an internally consistent set whatever the portal has revised
     since the last run.
 
-    Entries are sorted chronologically before accumulating: the portal
-    serves the JOURNEE series newest-first, and feeding that order into a
-    running sum would assign the largest sum to the earliest day, leaving
-    a statistic whose cumulative total decreases over time (it would read
-    as empty/broken in the Energy dashboard).
+    Entries are deduplicated by reading date and then accumulated in
+    chronological order. Two reasons:
+
+    * The portal serves the JOURNEE series newest-first; feeding that
+      order into a running sum would assign the largest sum to the
+      earliest day, leaving a statistic whose cumulative total decreases
+      over time (it reads as empty/broken in the Energy dashboard).
+    * A year's query window can return a boundary day that also belongs
+      to the adjacent year — a ``dateReleve`` like
+      ``2026-01-01T00:00:00+02:00`` (22:00 UTC the previous day) falls
+      inside the prior year's UTC window. Without dedup that day is
+      counted in both yearly fetches and inflates the cumulative total.
     """
-    stats: list[StatisticData] = []
-    running_sum = 0.0
+    by_date: dict[str, dict[str, Any]] = {}
     current_year = datetime.now(UTC).year
 
     for year in range(_START_YEAR, current_year + 1):
@@ -157,12 +163,19 @@ async def _collect_series(
             continue
         _LOGGER.debug("Year %d: fetched %d entries", year, len(entries))
 
-        for entry in sorted(entries, key=lambda e: e.get("dateReleve", "")):
-            stat = _entry_to_stat(entry, running_sum)
-            if stat is None:
-                continue
-            running_sum = stat["sum"]
-            stats.append(stat)
+        for entry in entries:
+            date = entry.get("dateReleve", "")
+            if date:
+                by_date[date] = entry
+
+    stats: list[StatisticData] = []
+    running_sum = 0.0
+    for date in sorted(by_date):
+        stat = _entry_to_stat(by_date[date], running_sum)
+        if stat is None:
+            continue
+        running_sum = stat["sum"]
+        stats.append(stat)
 
     return stats
 
