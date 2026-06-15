@@ -56,6 +56,8 @@ Une **statistique externe mensuelle** est également importée sous l'identifian
 
 Les contrats dont le compteur expose la **télérelève journalière** (compteurs communicants avec la granularité `JOURNEE` activée sur le portail) bénéficient en plus d'une **statistique externe journalière** sous `eaux_marseille:daily_consumption_<contrat>`, et le capteur d'index précis est alimenté par la série journalière (à jour à J-1 en général). La détection est automatique ; les contrats en relevé trimestriel conservent le comportement mensuel actuel.
 
+> **Statistiques externes vs entités.** Les identifiants `eaux_marseille:…` ci-dessus (avec le `:`) sont des *statistiques externes*, pas des entités. Elles apparaissent dans les sélecteurs de **statistiques** — la source d'eau du tableau de bord Énergie et la carte `statistics-graph` — mais **pas** dans le sélecteur d'*entités* classique proposé à l'ajout de la plupart des cartes, ni dans l'onglet Historique. Pour les afficher depuis l'interface, utilisez une carte `statistics-graph` (son sélecteur liste les statistiques) ou collez l'identifiant en YAML. Si une carte demande une *entité*, utilisez plutôt une des lignes `sensor.…` — en particulier `…_index_compteur_precis`, un capteur d'eau `total_increasing` qui fait aussi directement office de source d'eau pour le tableau de bord Énergie.
+
 ## Cas d'usage
 
 ### Suivre l'eau dans le tableau de bord Énergie

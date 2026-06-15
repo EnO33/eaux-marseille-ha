@@ -79,6 +79,10 @@ async def test_import_creates_statistics(
     assert metadata["source"] == DOMAIN
     assert metadata["statistic_id"] == f"{DOMAIN}:monthly_consumption_{MOCK_CONTRACT_ID}"
     assert metadata["has_sum"] is True
+    # unit_class must be the volume class, not None: the Energy dashboard
+    # water picker and the statistics-graph picker both filter strictly on
+    # unit_class == "volume" and would otherwise hide the statistic (#29).
+    assert metadata["unit_class"] == "volume"
     # has_mean=False was deprecated and removed in HA 2026.4 in favour of
     # the typed StatisticMeanType.NONE (see issue #19).
     assert metadata["mean_type"] == StatisticMeanType.NONE
