@@ -28,7 +28,7 @@ async def _setup_loaded_entry(hass: HomeAssistant, mock_client: MagicMock, entry
     """Bring the integration up to ``LOADED`` for the given mock entry."""
     with (
         patch(
-            "custom_components.eaux_marseille.EauxDeMarseilleClient",
+            "custom_components.eaux_marseille._client_factory.EauxDeMarseilleClient",
             return_value=mock_client,
         ),
         patch(
@@ -89,7 +89,7 @@ async def test_reimport_runs_historical_import(
     fresh_client.close = AsyncMock()
     with (
         patch(
-            "custom_components.eaux_marseille.services.EauxDeMarseilleClient",
+            "custom_components.eaux_marseille._client_factory.EauxDeMarseilleClient",
             return_value=fresh_client,
         ),
         patch(

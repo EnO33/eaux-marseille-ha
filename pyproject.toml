@@ -1,3 +1,14 @@
+# A minimal PEP 621 table. This project is a Home Assistant custom
+# component, not a pip-installable package — the real version and runtime
+# requirements live in custom_components/eaux_marseille/manifest.json.
+# This block exists so `deptry` has a declared-dependency source to check
+# imports against; keep `dependencies` in sync with the manifest.
+[project]
+name = "eaux-marseille-ha"
+dynamic = ["version"]
+requires-python = ">=3.13"
+dependencies = ["tenacity>=8.0"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
@@ -39,6 +50,7 @@ select = [
     "PL",     # pylint
     "TRY",    # tryceratops (better try/except)
     "PERF",   # perflint
+    "C901",   # mccabe cyclomatic complexity
 ]
 ignore = [
     "E501",     # line-too-long (we use the formatter for that)
@@ -66,6 +78,11 @@ ignore = [
     "S106",     # hardcoded-password-func-arg (test fixtures use fake creds)
     "SLF001",   # private-member-access (tests inspect internals)
 ]
+
+[tool.ruff.lint.mccabe]
+# Cap cyclomatic complexity. The codebase currently sits well under this;
+# the gate keeps a single function from quietly growing unmanageable.
+max-complexity = 10
 
 [tool.ruff.lint.isort]
 known-first-party = ["custom_components.eaux_marseille"]
@@ -107,3 +124,76 @@ module = ["tests.*"]
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 disable_error_code = ["no-untyped-def", "type-arg", "no-untyped-call"]
+
+# ---------------------------------------------------------------------
+# import-linter: enforce the documented module architecture
+# ---------------------------------------------------------------------
+
+[tool.importlinter]
+root_package = "custom_components.eaux_marseille"
+
+[[tool.importlinter.contracts]]
+name = "Auth/transport stack stays layered (api -> _auth -> _http -> _redirects)"
+type = "layers"
+layers = [
+    "custom_components.eaux_marseille.api",
+    "custom_components.eaux_marseille._auth",
+    "custom_components.eaux_marseille._http",
+    "custom_components.eaux_marseille._redirects",
+]
+
+[[tool.importlinter.contracts]]
+name = "Leaf modules (const/exceptions/models) have no intra-package imports"
+type = "forbidden"
+source_modules = [
+    "custom_components.eaux_marseille.const",
+    "custom_components.eaux_marseille.exceptions",
+    "custom_components.eaux_marseille.models",
+]
+forbidden_modules = [
+    "custom_components.eaux_marseille.api",
+    "custom_components.eaux_marseille._auth",
+    "custom_components.eaux_marseille._http",
+    "custom_components.eaux_marseille._redirects",
+    "custom_components.eaux_marseille._client_factory",
+    "custom_components.eaux_marseille.coordinator",
+    "custom_components.eaux_marseille.config_flow",
+    "custom_components.eaux_marseille.sensor",
+    "custom_components.eaux_marseille.statistics",
+    "custom_components.eaux_marseille.diagnostics",
+    "custom_components.eaux_marseille.services",
+]
+
+# ---------------------------------------------------------------------
+# deptry: dependency hygiene (unused / missing / misplaced imports)
+# ---------------------------------------------------------------------
+
+[tool.deptry]
+# homeassistant, aiohttp, yarl and voluptuous are provided by the Home
+# Assistant runtime; HA integrations import them without declaring them as
+# requirements (manifest.json lists only tenacity). They are ignored
+# whether deptry classifies them as missing (DEP001, when HA isn't
+# installed in the run env) or transitive (DEP003, when it is). The
+# residual signal deptry still provides: tenacity must stay used (DEP002)
+# and no *other* undeclared third-party import may sneak in.
+[tool.deptry.per_rule_ignores]
+DEP001 = ["homeassistant", "aiohttp", "yarl", "voluptuous"]
+DEP003 = ["homeassistant", "aiohttp", "yarl", "voluptuous"]
+
+# ---------------------------------------------------------------------
+# Vulture: dead-code detection (see vulture_whitelist.py for the HA
+# framework hooks that are called by the framework, not by our code)
+# ---------------------------------------------------------------------
+
+[tool.vulture]
+paths = ["custom_components/eaux_marseille", "vulture_whitelist.py"]
+
+# ---------------------------------------------------------------------
+# Pylint: only the duplicate-code (copy/paste) checker is used; ruff
+# covers everything else.
+# ---------------------------------------------------------------------
+
+[tool.pylint.similarities]
+min-similarity-lines = 6
+ignore-imports = true
+ignore-signatures = true
