@@ -20,12 +20,11 @@ from typing import TYPE_CHECKING
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import ServiceValidationError
 
-from .api import EauxDeMarseilleClient
-from .const import CONF_CONTRACT_ID, CONF_PROVIDER, DEFAULT_PROVIDER, DOMAIN, Provider
+from ._client_factory import build_client
+from .const import CONF_CONTRACT_ID, DOMAIN
 from .statistics import async_import_historical_statistics
 
 if TYPE_CHECKING:
@@ -81,13 +80,7 @@ def async_register_services(hass: HomeAssistant) -> None:
         # Use a fresh client so we don't disturb the coordinator's cached
         # session — re-importing a few years of history fires several
         # GETs and we don't want them to interleave with a regular poll.
-        provider = Provider(entry.data.get(CONF_PROVIDER, DEFAULT_PROVIDER.value))
-        client = EauxDeMarseilleClient(
-            login=entry.data[CONF_USERNAME],
-            password=entry.data[CONF_PASSWORD],
-            contract_id=entry.data[CONF_CONTRACT_ID],
-            provider=provider,
-        )
+        client = build_client(entry)
         try:
             await async_import_historical_statistics(hass, client, entry.data[CONF_CONTRACT_ID])
         finally:

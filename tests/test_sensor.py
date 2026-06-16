@@ -22,7 +22,7 @@ async def test_sensors_created(
     """All expected sensors are created on setup."""
     with (
         patch(
-            "custom_components.eaux_marseille.EauxDeMarseilleClient",
+            "custom_components.eaux_marseille._client_factory.EauxDeMarseilleClient",
             return_value=mock_client,
         ),
         patch(
@@ -65,7 +65,7 @@ async def test_sensor_values(
     """Sensor states reflect the consumption data."""
     with (
         patch(
-            "custom_components.eaux_marseille.EauxDeMarseilleClient",
+            "custom_components.eaux_marseille._client_factory.EauxDeMarseilleClient",
             return_value=mock_client,
         ),
         patch(

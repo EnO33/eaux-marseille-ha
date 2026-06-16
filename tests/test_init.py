@@ -24,7 +24,7 @@ async def test_setup_entry(hass: HomeAssistant, mock_client: MagicMock, mock_con
     """Integration sets up correctly from a config entry."""
     with (
         patch(
-            "custom_components.eaux_marseille.EauxDeMarseilleClient",
+            "custom_components.eaux_marseille._client_factory.EauxDeMarseilleClient",
             return_value=mock_client,
         ),
         patch(
@@ -48,7 +48,7 @@ async def test_unload_entry(hass: HomeAssistant, mock_client: MagicMock, mock_co
     """Integration unloads correctly."""
     with (
         patch(
-            "custom_components.eaux_marseille.EauxDeMarseilleClient",
+            "custom_components.eaux_marseille._client_factory.EauxDeMarseilleClient",
             return_value=mock_client,
         ),
         patch(
@@ -81,7 +81,7 @@ async def test_statistics_reimported_daily(
     mock_import = AsyncMock()
     with (
         patch(
-            "custom_components.eaux_marseille.EauxDeMarseilleClient",
+            "custom_components.eaux_marseille._client_factory.EauxDeMarseilleClient",
             return_value=mock_client,
         ),
         patch(
@@ -117,7 +117,7 @@ async def test_daily_reimport_timer_cancelled_on_unload(
     mock_import = AsyncMock()
     with (
         patch(
-            "custom_components.eaux_marseille.EauxDeMarseilleClient",
+            "custom_components.eaux_marseille._client_factory.EauxDeMarseilleClient",
             return_value=mock_client,
         ),
         patch(

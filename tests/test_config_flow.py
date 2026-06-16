@@ -30,10 +30,11 @@ def _full_client_mock(mock_client: MagicMock):
 
     The config flow validates credentials with one client, but on
     ``CREATE_ENTRY`` / reauth-reload Home Assistant immediately calls
-    ``async_setup_entry`` which imports the client from ``.api`` via
-    ``__init__``. Without patching that second path the real client
-    runs and opens a real socket — pytest-homeassistant-custom-component
-    fails the test on socket access since 0.13.317.
+    ``async_setup_entry`` which builds the client via
+    ``_client_factory.build_client``. Without patching that second path
+    the real client runs and opens a real socket —
+    pytest-homeassistant-custom-component fails the test on socket access
+    since 0.13.317.
 
     The coordinator's update method and the statistics importer are
     patched alongside so the post-create setup is fully offline.
@@ -44,7 +45,7 @@ def _full_client_mock(mock_client: MagicMock):
             return_value=mock_client,
         ),
         patch(
-            "custom_components.eaux_marseille.EauxDeMarseilleClient",
+            "custom_components.eaux_marseille._client_factory.EauxDeMarseilleClient",
             return_value=mock_client,
         ),
         patch(
