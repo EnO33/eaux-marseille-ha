@@ -181,12 +181,33 @@ DEP001 = ["homeassistant", "aiohttp", "yarl", "voluptuous"]
 DEP003 = ["homeassistant", "aiohttp", "yarl", "voluptuous"]
 
 # ---------------------------------------------------------------------
-# Vulture: dead-code detection (see vulture_whitelist.py for the HA
-# framework hooks that are called by the framework, not by our code)
+# Vulture: dead-code detection
 # ---------------------------------------------------------------------
 
 [tool.vulture]
-paths = ["custom_components/eaux_marseille", "vulture_whitelist.py"]
+paths = ["custom_components/eaux_marseille"]
+# Home Assistant framework hooks: called by HA (config-entry lifecycle,
+# config-flow steps, the coordinator update method, the sensor platform
+# entry point, entity attributes/properties), not by our own code, so they
+# look "unused" to vulture. Matched by name; globs allowed. (Using
+# ignore_names rather than a vulture_whitelist.py file, whose intentionally
+# effect-free statements tripped CodeQL's "statement has no effect" rule.)
+ignore_names = [
+    "CONFIG_SCHEMA",
+    "PARALLEL_UPDATES",
+    "VERSION",
+    "EauxDeMarseilleConfigFlow",
+    "async_setup",
+    "async_setup_entry",
+    "async_unload_entry",
+    "async_step_*",
+    "async_get_config_entry_diagnostics",
+    "_async_update_data",
+    "native_value",
+    "_attr_*",
+    "config",
+    "entry_data",
+]
 
 # ---------------------------------------------------------------------
 # Pylint: only the duplicate-code (copy/paste) checker is used; ruff
