@@ -11,5 +11,5 @@
   "loggers": ["custom_components.eaux_marseille"],
   "quality_scale": "gold",
   "requirements": ["tenacity>=8.0"],
-  "version": "1.16.3"
+  "version": "1.16.4"
 }
