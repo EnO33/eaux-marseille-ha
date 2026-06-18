@@ -8,7 +8,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.event import async_track_time_interval
 
@@ -82,10 +82,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: EauxDeMarseilleConfigEnt
     else:
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _run_import)
 
-    # Re-run the import daily so fresh contracts pick up their statistic
-    # once the portal starts serving data, and mature contracts get the
-    # new month on the Energy dashboard without a restart. The unsub is
-    # registered with the entry so the timer is cancelled on unload.
+    # Refresh the statistics as soon as the coordinator sees a newer
+    # reading, instead of waiting up to a day for the safety-net timer
+    # below. The precise meter index advances whenever the portal delivers
+    # new consumption (daily for communicating meters, ~monthly otherwise),
+    # so it is a good "fresh data" marker. Seeded from the first refresh —
+    # which the setup import above already covers — so we only fire on a
+    # genuine advance (#41).
+    last_imported_index = coordinator.data.index_precise_m3
+
+    @callback
+    def _reimport_on_new_data() -> None:
+        nonlocal last_imported_index
+        index = coordinator.data.index_precise_m3
+        if index is None or index == last_imported_index:
+            return
+        last_imported_index = index
+        hass.async_create_task(_run_import())
+
+    entry.async_on_unload(coordinator.async_add_listener(_reimport_on_new_data))
+
+    # Daily safety net: re-run even when the index didn't move, so revised
+    # past months still land and a fresh contract picks up its statistic
+    # once the portal starts serving data — all without a restart. The
+    # unsub is registered with the entry so the timer is cancelled on unload.
     entry.async_on_unload(async_track_time_interval(hass, _run_import, _STATS_REIMPORT_INTERVAL))
 
     return True
