@@ -5,6 +5,7 @@ These tests require a full Home Assistant environment and only run in CI.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -108,6 +109,49 @@ async def test_statistics_reimported_daily(
         async_fire_time_changed(hass, dt_util.utcnow() + timedelta(days=2, minutes=2))
         await hass.async_block_till_done()
         assert mock_import.await_count == 3
+
+
+async def test_statistics_reimported_on_new_data(
+    hass: HomeAssistant, mock_client: MagicMock, mock_config_entry
+) -> None:
+    """Statistics re-import as soon as the coordinator sees a newer index (#41).
+
+    The precise meter index advances when the portal delivers new
+    consumption, so the import should follow immediately instead of
+    waiting for the daily timer. An unchanged index must not trigger a
+    redundant import.
+    """
+    mock_import = AsyncMock()
+    with (
+        patch(
+            "custom_components.eaux_marseille._client_factory.EauxDeMarseilleClient",
+            return_value=mock_client,
+        ),
+        patch(
+            "custom_components.eaux_marseille.coordinator.EauxDeMarseilleCoordinator._async_update_data",
+            return_value=MOCK_CONSUMPTION,
+        ),
+        patch(
+            "custom_components.eaux_marseille.async_import_historical_statistics",
+            new=mock_import,
+        ),
+    ):
+        await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
+        assert mock_import.await_count == 1  # one import at setup
+
+        coordinator = mock_config_entry.runtime_data.coordinator
+
+        # Same index on the next poll -> no redundant import.
+        coordinator.async_set_updated_data(MOCK_CONSUMPTION)
+        await hass.async_block_till_done()
+        assert mock_import.await_count == 1
+
+        # A fresher reading -> an immediate re-import.
+        fresher = replace(MOCK_CONSUMPTION, index_precise_m3=999.0)
+        coordinator.async_set_updated_data(fresher)
+        await hass.async_block_till_done()
+        assert mock_import.await_count == 2
 
 
 async def test_daily_reimport_timer_cancelled_on_unload(
