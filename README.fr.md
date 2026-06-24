@@ -1,6 +1,6 @@
 # Eaux de Marseille — Intégration Home Assistant
 
-[![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
+[![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://github.com/hacs/default)
 [![Release](https://img.shields.io/github/v/release/EnO33/eaux-marseille-ha)](https://github.com/EnO33/eaux-marseille-ha/releases)
 [![Tests](https://github.com/EnO33/eaux-marseille-ha/actions/workflows/tests.yml/badge.svg)](https://github.com/EnO33/eaux-marseille-ha/actions/workflows/tests.yml)
 [![Niveau de qualité : gold](https://img.shields.io/badge/quality--scale-gold-yellow.svg)](https://developers.home-assistant.io/docs/core/integration-quality-scale)
@@ -136,12 +136,12 @@ Cette carte lit directement la statistique externe importée — pas besoin de c
 
 ### Via HACS (recommandé)
 
-1. Dans Home Assistant, ouvrez **HACS**
-2. Allez dans **Intégrations → menu ⋮ → Dépôts personnalisés**
-3. Ajoutez `https://github.com/EnO33/eaux-marseille-ha` avec la catégorie **Intégration**
-4. Cherchez **Eaux de Marseille** dans la liste HACS et installez
-5. **Redémarrez Home Assistant**
-6. Continuez avec la [Configuration](#configuration)
+Eaux de Marseille est dans le dépôt HACS par défaut, aucun dépôt personnalisé n'est nécessaire :
+
+1. Dans Home Assistant, ouvrez **HACS → Intégrations**
+2. Cherchez **Eaux de Marseille** et installez-la
+3. **Redémarrez Home Assistant**
+4. Continuez avec la [Configuration](#configuration)
 
 ### Installation manuelle
 
