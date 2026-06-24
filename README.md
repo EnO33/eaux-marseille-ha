@@ -1,6 +1,6 @@
 # Eaux de Marseille — Home Assistant integration
 
-[![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
+[![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://github.com/hacs/default)
 [![Release](https://img.shields.io/github/v/release/EnO33/eaux-marseille-ha)](https://github.com/EnO33/eaux-marseille-ha/releases)
 [![Tests](https://github.com/EnO33/eaux-marseille-ha/actions/workflows/tests.yml/badge.svg)](https://github.com/EnO33/eaux-marseille-ha/actions/workflows/tests.yml)
 [![Quality scale: gold](https://img.shields.io/badge/quality--scale-gold-yellow.svg)](https://developers.home-assistant.io/docs/core/integration-quality-scale)
@@ -136,12 +136,12 @@ This pulls directly from the imported external statistic — no separate templat
 
 ### Via HACS (recommended)
 
-1. In Home Assistant, open **HACS**
-2. Go to **Integrations → ⋮ menu → Custom repositories**
-3. Add `https://github.com/EnO33/eaux-marseille-ha` with category **Integration**
-4. Search for **Eaux de Marseille** in the HACS integrations list and install
-5. **Restart Home Assistant**
-6. Continue to [Configuration](#configuration)
+Eaux de Marseille is in the default HACS store, so no custom repository is needed:
+
+1. In Home Assistant, open **HACS → Integrations**
+2. Search for **Eaux de Marseille** and install it
+3. **Restart Home Assistant**
+4. Continue to [Configuration](#configuration)
 
 ### Manual installation
 
