@@ -1,7 +1,7 @@
 # Static-analysis tools for the "Code quality" CI job. Kept separate from
 # requirements_test.txt because none of them need Home Assistant installed
 # (all are AST/graph based), so the job stays fast.
-import-linter==2.11
+import-linter==2.12
 deptry==0.25.1
 vulture==2.16
 pylint==4.0.6
