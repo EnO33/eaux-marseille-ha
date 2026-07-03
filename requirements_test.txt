@@ -4,7 +4,7 @@
 # which keeps us aligned with the version Home Assistant core itself
 # tests against.
 pytest-homeassistant-custom-component>=0.13.339
-aioresponses>=0.7.8
+aioresponses>=0.7.9
 
 # Runtime dependencies declared in custom_components/eaux_marseille/manifest.json.
 # Mirrored here so the CI test environment has them available without
