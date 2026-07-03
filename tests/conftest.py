@@ -2,10 +2,41 @@
 
 from __future__ import annotations
 
+import inspect
 import sys
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from aiohttp.client_reqrep import ClientResponse as _ClientResponse
+
+# ------------------------------------------------------------------
+# aioresponses compatibility shim for aiohttp >= 3.14.
+#
+# aiohttp 3.14 made ``stream_writer`` a required keyword argument of
+# ``ClientResponse.__init__``. aioresponses (through 0.7.9, its latest
+# release) does not pass it when building mocked responses, so every
+# aioresponses-based test fails with
+# "missing 1 required keyword-only argument: 'stream_writer'". We can't
+# pin aiohttp down — Home Assistant requires 3.14.x — so we default it.
+#
+# aioresponses passes ``writer=None`` ("request already sent"), which is
+# the branch where aiohttp only reads ``stream_writer.output_size``, so a
+# tiny stub exposing that attribute is enough for a read-only mocked
+# response. Guarded on the signature, so it is a no-op on older aiohttp.
+# Remove once aioresponses ships an aiohttp-3.14 compatible release.
+# ------------------------------------------------------------------
+if "stream_writer" in inspect.signature(_ClientResponse.__init__).parameters:
+    import aioresponses.core as _aioresponses_core
+
+    _stub_stream_writer = SimpleNamespace(output_size=0)
+
+    class _CompatClientResponse(_ClientResponse):
+        def __init__(self, *args, **kwargs):
+            kwargs.setdefault("stream_writer", _stub_stream_writer)
+            super().__init__(*args, **kwargs)
+
+    _aioresponses_core.ClientResponse = _CompatClientResponse
 
 # ------------------------------------------------------------------
 # Detect whether a real Home Assistant installation is available.
