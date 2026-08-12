@@ -57,7 +57,9 @@ class ConsumptionData:
         :param monthly: Payload from
             ``/Consommation/listeConsommationsInstanceAlerteChart/.../MOIS/true``.
         :param history: Payload from
-            ``/Facturation/listeConsommationsFacturees/{contract}``.
+            ``/Facturation/listeConsommationsFacturees/{contract}``. Its
+            newest entry backfills the last reading when the dashboard
+            endpoint returns only a date (seen on some Vivaigo contracts).
         :param daily_entries: Optional ``consommations`` list from the same
             chart endpoint with ``JOURNEE`` granularity — only present on
             contracts with daily telemetry. Its most recent entry carries a
@@ -66,8 +68,19 @@ class ConsumptionData:
             this series newest-first, hence the explicit max-by-date below
             instead of relying on list position.
         """
-        readings = history.get("resultats", [])
+        # The history endpoint is served newest-first: resultats[0] is the
+        # latest reading, resultats[1] the previous one.
+        readings = history.get("resultats") or []
+        latest = readings[0] if readings else {}
         previous = readings[1] if len(readings) > 1 else {}
+
+        # The dashboard endpoint is authoritative for the last reading, but on
+        # some contracts it returns only a date (null volume/index). The
+        # matching history entry carries the full record, so layer the
+        # dashboard's *present* values over it — backfilling the gaps without
+        # letting missing fields wipe a figure the dashboard did provide.
+        last_reading = {**latest, **{k: v for k, v in last_billed.items() if v is not None}}
+        index_m3 = last_reading.get("valeurIndex")
 
         monthly_entries = monthly.get("consommations", [])
         # The monthly chart comes back chronological, so the last entry is
@@ -82,15 +95,19 @@ class ConsumptionData:
         index_precise = _litres_to_m3(latest_daily.get("valeurIndex"))
         if index_precise is None:
             index_precise = _litres_to_m3(current_month.get("valeurIndex"))
+        if index_precise is None:
+            # No chart series for this contract; fall back to the coarser
+            # billed index, which is already in m³ (no litre conversion).
+            index_precise = index_m3
 
         return cls(
-            index_m3=last_billed.get("valeurIndex"),
+            index_m3=index_m3,
             index_precise_m3=index_precise,
-            last_reading_m3=last_billed.get("volumeConsoEnM3"),
-            last_reading_litres=last_billed.get("volumeConsoEnLitres"),
-            last_reading_date=_iso_date_prefix(last_billed.get("dateReleve")),
-            last_reading_days=last_billed.get("nbJours"),
-            daily_average_m3=round(last_billed.get("moyenne", 0.0), 4),
+            last_reading_m3=last_reading.get("volumeConsoEnM3"),
+            last_reading_litres=last_reading.get("volumeConsoEnLitres"),
+            last_reading_date=_iso_date_prefix(last_reading.get("dateReleve")),
+            last_reading_days=last_reading.get("nbJours"),
+            daily_average_m3=round(last_reading.get("moyenne") or 0.0, 4),
             previous_reading_m3=previous.get("volumeConsoEnM3"),
             previous_reading_date=_iso_date_prefix(previous.get("dateReleve")),
             current_month_m3=current_month.get("volumeConsoEnM3"),
