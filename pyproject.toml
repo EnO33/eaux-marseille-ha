@@ -55,6 +55,7 @@ select = [
 ignore = [
     "E501",     # line-too-long (we use the formatter for that)
     "PLR0913",  # too-many-arguments (HA APIs commonly take many)
+    "PLR0917",  # too-many-positional-arguments (public client ctor is positional by design)
     "TRY003",   # raise-vanilla-args (we want descriptive error messages)
     "TRY300",   # try-consider-else (sometimes the linear flow is clearer)
     "PLR2004",  # magic-number-comparison (HTTP status codes are well-known)
