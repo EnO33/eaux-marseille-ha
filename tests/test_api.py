@@ -9,6 +9,7 @@ import json
 import re
 import socket
 import urllib.parse
+from datetime import UTC, datetime
 
 import aiohttp
 import pytest
@@ -23,7 +24,7 @@ from custom_components.eaux_marseille.api import (
     EauxDeMarseilleNoDataError,
     EauxDeMarseilleSessionExpiredError,
 )
-from custom_components.eaux_marseille.const import PROVIDERS, Provider
+from custom_components.eaux_marseille.const import MOBILE_ENDPOINTS, PROVIDERS, Provider
 from custom_components.eaux_marseille.diagnostics import _scrub_exception
 from custom_components.eaux_marseille.models import encode_context_cookie
 
@@ -57,12 +58,18 @@ def expected_lingering_timers():
 
 @pytest.fixture
 async def client() -> EauxDeMarseilleClient:
-    """Return a client instance with fake credentials."""
+    """Return a client instance with fake credentials.
+
+    The mobility fallback is disabled here so these tests exercise the web
+    portal in isolation (and don't hit the unmocked mobility API); the
+    fallback has its own dedicated test.
+    """
     c = EauxDeMarseilleClient(
         login="user@example.com",
         password="password",
         contract_id=CONTRACT_ID,
     )
+    c._mobile = None
     yield c
     await c.close()
 
@@ -694,6 +701,44 @@ class TestDailyTelemetry:
         await client.authenticate()
         entries = await client.fetch_daily_range(2026)
         assert entries == []
+
+    async def test_fetch_daily_range_falls_back_to_mobile(self, mock_auth: aioresponses) -> None:
+        """When the web portal has no daily series, fetch_daily_range fills
+        it from the mobility API for recent years."""
+        # A mobile-enabled client (the shared fixture disables mobility).
+        client = EauxDeMarseilleClient(
+            login="user@example.com", password="password", contract_id=CONTRACT_ID
+        )
+        year = datetime.now(UTC).year
+        mock_auth.get(
+            re.compile(r".*listeConsommationsInstanceAlerteChart.*/JOURNEE/true"),
+            status=400,
+            body='{"severity": "Information", "message": "no data"}',
+            content_type="application/json",
+        )
+        base = MOBILE_ENDPOINTS[Provider.SEM].base_url
+        mock_auth.post(f"{base}/connect", payload={"Code": 100, "Token": "tok", "Result": {}})
+        mock_auth.post(
+            f"{base}/getListeReleves/",
+            payload={
+                "Code": 100,
+                "Result": {
+                    "Releves": [
+                        {"DateReleve": f"05/01/{year}", "ValeurIndex": "500", "Consommation": 50.0}
+                    ]
+                },
+            },
+            repeat=True,
+        )
+        try:
+            await client.authenticate()
+            entries = await client.fetch_daily_range(year)
+        finally:
+            await client.close()
+
+        assert entries
+        assert entries[0]["valeurIndex"] == 500
+        assert entries[0]["volumeConsoEnM3"] == 0.05
 
 
 class TestSessionRecovery:

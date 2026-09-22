@@ -123,6 +123,40 @@ async def test_data_code_error_raises_api_error(client: MobileClient) -> None:
             await client.recent_daily()
 
 
+async def test_daily_range_walks_every_month(client: MobileClient) -> None:
+    """daily_range fetches the whole (past) year one month at a time and
+    translates every reading to the web JOURNEE shape."""
+    with aioresponses() as m:
+        m.post(_CONNECT_URL, payload=_connect_ok())
+        m.post(
+            f"{_BASE}/getListeReleves/",
+            payload={
+                "Code": 100,
+                "Result": {
+                    "Releves": [
+                        {
+                            "DateReleve": "10/03/2024",
+                            "TypeAgregat": "R",
+                            "ValeurIndex": "1000",
+                            "Consommation": 100.0,
+                        }
+                    ]
+                },
+            },
+            repeat=True,
+        )
+
+        # 2024 is in the past, so all 12 months are walked -> 12 entries.
+        entries = await client.daily_range(2024)
+
+    assert len(entries) == 12
+    assert entries[0] == {
+        "dateReleve": "2024-03-10T00:00:00",
+        "volumeConsoEnM3": 0.1,
+        "valeurIndex": 1000,
+    }
+
+
 async def test_reauthenticates_once_on_session_expiry(client: MobileClient) -> None:
     """A 401 on the data call triggers a transparent re-auth and retry."""
     with aioresponses() as m:
