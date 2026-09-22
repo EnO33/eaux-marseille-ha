@@ -154,6 +154,7 @@ source_modules = [
 forbidden_modules = [
     "custom_components.eaux_marseille.api",
     "custom_components.eaux_marseille._auth",
+    "custom_components.eaux_marseille._mobile",
     "custom_components.eaux_marseille._http",
     "custom_components.eaux_marseille._redirects",
     "custom_components.eaux_marseille._client_factory",

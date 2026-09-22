@@ -78,6 +78,40 @@ PROVIDERS: dict[Provider, PortalEndpoints] = {
     ),
 }
 
+
+@dataclass(frozen=True, slots=True)
+class MobileEndpoints:
+    """Per-provider SOMEI *mobility* API config (the backend the phone app uses).
+
+    A separate backend from the web portal: a dedicated host and an
+    app-level ``auth_key`` sent as the ``AuthKey`` header on every request
+    (the mobile equivalent of :attr:`PortalEndpoints.access_key`). It
+    exposes the daily readings the web portal gates behind the
+    "Suivi Conso+" subscription, so it is used as a daily-data fallback for
+    contracts the web portal keeps monthly-only. An app constant, not a
+    personal secret — shared by all users, like the web access key.
+
+    Only SEM is captured so far; SEMM and Vivaigo are added once their keys
+    are known.
+    """
+
+    base_url: str
+    auth_key: str
+    user_agent: str
+
+    @property
+    def host(self) -> str:
+        return self.base_url.split("://", 1)[-1]
+
+
+MOBILE_ENDPOINTS: dict[Provider, MobileEndpoints] = {
+    Provider.SEM: MobileEndpoints(
+        base_url="https://ael-gsem-mobility.somei.fr",
+        auth_key="d1badcbfb6d7c494d1d77b449d2286c3a0587f8b02f02ca9110e040d8f29c184",
+        user_agent="Mon Eau SEM/817 CFNetwork/3860.700.1 Darwin/25.6.0",
+    ),
+}
+
 # Human-readable utility names. Used as the ``manufacturer`` of the
 # device created for each contract so the HA device card shows the
 # actual utility (not the integration brand).
