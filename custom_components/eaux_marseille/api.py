@@ -19,8 +19,10 @@ from typing import Any, TypeVar
 import aiohttp
 
 from ._auth import PortalAuth
+from ._mobile import MobileClient
 from .const import (
     DEFAULT_PROVIDER,
+    MOBILE_ENDPOINTS,
     PROVIDERS,
     REQUEST_TIMEOUT_S,
     Provider,
@@ -97,6 +99,22 @@ class EauxDeMarseilleClient:
             login=login,
             password=password,
         )
+        # The mobility API (phone-app backend) exposes daily readings the
+        # web portal keeps monthly-only. Used only as a daily fallback, and
+        # only for providers whose mobility config is known.
+        mobile_endpoints = MOBILE_ENDPOINTS.get(provider)
+        self._mobile = (
+            MobileClient(
+                self._session,
+                mobile_endpoints,
+                self._timeout,
+                login=login,
+                password=password,
+                contract_id=contract_id,
+            )
+            if mobile_endpoints is not None
+            else None
+        )
 
     async def close(self) -> None:
         """Close the underlying session if we own it."""
@@ -158,9 +176,21 @@ class EauxDeMarseilleClient:
         # daily data just get an empty list. No upfront probe needed: the
         # mere presence of entries tells us whether the meter is daily.
         daily_entries = await self._chart_entries(year, "JOURNEE", optional=True)
+        # Web portal has no daily series for this contract: fall back to the
+        # mobility API, which exposes it even for monthly-only web contracts.
+        if not daily_entries and (mobile := self._mobile) is not None:
+            daily_entries = await self._mobile_daily(mobile)
         return ConsumptionData.from_api_responses(
             last, monthly, history, daily_entries=daily_entries
         )
+
+    async def _mobile_daily(self, mobile: MobileClient) -> list[dict[str, Any]]:
+        """Daily entries from the mobility API — best-effort, never breaks the poll."""
+        try:
+            return await mobile.recent_daily()
+        except EauxDeMarseilleError as err:
+            _LOGGER.debug("Mobile daily fallback unavailable: %s", err)
+            return []
 
     async def _chart_entries(
         self, year: int, granularity: str, *, optional: bool = False
