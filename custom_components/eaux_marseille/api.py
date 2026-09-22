@@ -151,15 +151,23 @@ class EauxDeMarseilleClient:
     async def fetch_daily_range(self, year: int) -> list[dict[str, Any]]:
         """Return the raw daily consumption entries for ``year``.
 
-        Daily data only exists for contracts whose meter exposes it
-        (communicating meters with JOURNEE granularity enabled).
-        Contracts without it get an empty list — the fetch is tolerant
-        of the portal refusing the endpoint (soft 400, hard 4xx), so it
-        never breaks callers.
+        Contracts whose web portal exposes JOURNEE get it from there.
+        Otherwise, for recent years, fall back to the mobility API (which
+        exposes daily readings even for monthly-only web contracts). The
+        fetch is tolerant throughout, so callers never break.
         """
-        return await self._with_session_recovery(
+        entries = await self._with_session_recovery(
             lambda: self._chart_entries(year, "JOURNEE", optional=True)
         )
+        # The mobility API only carries recent history, so older years stay
+        # web-only to avoid pointless month-by-month requests.
+        if (
+            not entries
+            and (mobile := self._mobile) is not None
+            and year >= datetime.now(UTC).year - 1
+        ):
+            entries = await self._mobile_daily_range(mobile, year)
+        return entries
 
     async def _fetch_inner(self) -> ConsumptionData:
         last = await self._safe_get(
@@ -185,11 +193,19 @@ class EauxDeMarseilleClient:
         )
 
     async def _mobile_daily(self, mobile: MobileClient) -> list[dict[str, Any]]:
-        """Daily entries from the mobility API — best-effort, never breaks the poll."""
+        """Recent daily entries from the mobility API — best-effort, never breaks the poll."""
         try:
             return await mobile.recent_daily()
         except EauxDeMarseilleError as err:
             _LOGGER.debug("Mobile daily fallback unavailable: %s", err)
+            return []
+
+    async def _mobile_daily_range(self, mobile: MobileClient, year: int) -> list[dict[str, Any]]:
+        """Daily entries for ``year`` from the mobility API — best-effort."""
+        try:
+            return await mobile.daily_range(year)
+        except EauxDeMarseilleError as err:
+            _LOGGER.debug("Mobile daily-range fallback unavailable for %d: %s", year, err)
             return []
 
     async def _chart_entries(

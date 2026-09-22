@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Any, TypeVar
 
 import aiohttp
@@ -75,6 +76,34 @@ class MobileClient:
             if isinstance(data.get("Result"), dict)
             else None
         )
+        return [entry for r in releves or [] if (entry := _to_web_entry(r)) is not None]
+
+    async def daily_range(self, year: int) -> list[dict[str, Any]]:
+        """Return every daily reading of ``year`` as web ``JOURNEE`` entries.
+
+        The mobility API serves readings one month at a time, so this walks
+        the months of ``year`` (up to the current month for the current
+        year). Months with no data yield nothing and are simply skipped.
+        """
+        return await self._with_session_recovery(lambda: self._collect_year(year))
+
+    async def _collect_year(self, year: int) -> list[dict[str, Any]]:
+        now = datetime.now(UTC)
+        last_month = now.month if year == now.year else 12
+        entries: list[dict[str, Any]] = []
+        for month in range(1, last_month + 1):
+            entries.extend(await self._month_readings(year, month))
+        return entries
+
+    async def _month_readings(self, year: int, month: int) -> list[dict[str, Any]]:
+        body = {
+            "numeroAbonnement": self._contract_id,
+            "unite": "1",
+            "moisReleve": f"{month:02d}-{year}",
+        }
+        data = await self._request("POST", "/getListeReleves/", body=body)
+        result = data.get("Result")
+        releves = result.get("Releves") if isinstance(result, dict) else None
         return [entry for r in releves or [] if (entry := _to_web_entry(r)) is not None]
 
     async def _with_session_recovery(self, action: Callable[[], Awaitable[_T]]) -> _T:
