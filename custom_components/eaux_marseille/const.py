@@ -89,10 +89,9 @@ class MobileEndpoints:
     exposes the daily readings the web portal gates behind the
     "Suivi Conso+" subscription, so it is used as a daily-data fallback for
     contracts the web portal keeps monthly-only. An app constant, not a
-    personal secret — shared by all users, like the web access key.
-
-    Only SEM is captured so far; SEMM and Vivaigo are added once their keys
-    are known.
+    personal secret — shared by all users, like the web access key. The same
+    ``auth_key`` is shared across all three SOMEI apps; only the host and the
+    ``user_agent`` differ per provider.
     """
 
     base_url: str
@@ -104,11 +103,26 @@ class MobileEndpoints:
         return self.base_url.split("://", 1)[-1]
 
 
+# The ``AuthKey`` header is a single SOMEI-platform constant baked into every
+# "Mon Eau" app — identical for SEM, SEMM and Vivaigo (not per-app, not a
+# personal secret). Defined once and shared by the endpoints below.
+_SOMEI_MOBILE_AUTH_KEY = "d1badcbfb6d7c494d1d77b449d2286c3a0587f8b02f02ca9110e040d8f29c184"
+
 MOBILE_ENDPOINTS: dict[Provider, MobileEndpoints] = {
     Provider.SEM: MobileEndpoints(
         base_url="https://ael-gsem-mobility.somei.fr",
-        auth_key="d1badcbfb6d7c494d1d77b449d2286c3a0587f8b02f02ca9110e040d8f29c184",
+        auth_key=_SOMEI_MOBILE_AUTH_KEY,
         user_agent="Mon Eau SEM/817 CFNetwork/3860.700.1 Darwin/25.6.0",
+    ),
+    Provider.SEMM: MobileEndpoints(
+        base_url="https://ael-semm-mobility.somei.fr",
+        auth_key=_SOMEI_MOBILE_AUTH_KEY,
+        user_agent="Mon Eau SEMM/818 CFNetwork/3860.700.1 Darwin/25.6.0",
+    ),
+    Provider.VIVAIGO: MobileEndpoints(
+        base_url="https://ael-vie-mobility.somei.fr",
+        auth_key=_SOMEI_MOBILE_AUTH_KEY,
+        user_agent="Mon Eau Vivaigo/819 CFNetwork/3860.700.1 Darwin/25.6.0",
     ),
 }
 
