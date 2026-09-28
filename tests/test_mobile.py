@@ -166,3 +166,22 @@ async def test_reauthenticates_once_on_session_expiry(client: MobileClient) -> N
         m.get(_SYNTHESE_URL, payload=_synthese([]))  # retry succeeds
 
         assert await client.recent_daily() == []
+
+
+def test_mobile_endpoints_cover_all_providers() -> None:
+    """All three SOMEI apps are configured, sharing one AuthKey; only the
+    host and the User-Agent differ per provider."""
+    expected_hosts = {
+        Provider.SEM: "ael-gsem-mobility.somei.fr",
+        Provider.SEMM: "ael-semm-mobility.somei.fr",
+        Provider.VIVAIGO: "ael-vie-mobility.somei.fr",
+    }
+    # Every provider is covered (a new one must ship its own capture).
+    assert set(MOBILE_ENDPOINTS) == set(Provider) == set(expected_hosts)
+    # One shared AuthKey (SOMEI-platform constant), not per-app.
+    assert len({ep.auth_key for ep in MOBILE_ENDPOINTS.values()}) == 1
+    for provider, host in expected_hosts.items():
+        endpoints = MOBILE_ENDPOINTS[provider]
+        assert endpoints.base_url == f"https://{host}"
+        assert endpoints.host == host
+        assert endpoints.user_agent.startswith("Mon Eau ")
