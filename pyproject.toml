@@ -100,6 +100,8 @@ indent-style = "space"
 [tool.mypy]
 python_version = "3.14"
 strict = true
+# Types `voluptuous` as probatio, like HA core does (see stubs/voluptuous).
+mypy_path = "stubs"
 warn_unreachable = true
 # Some `# type: ignore` comments target false positives that only appear
 # when HA is actually installed (CI). Locally (Windows, HA stubbed) they
