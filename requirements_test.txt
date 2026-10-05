@@ -10,3 +10,8 @@ aioresponses>=0.7.9
 # Mirrored here so the CI test environment has them available without
 # pulling them in via Home Assistant's full manifest install.
 tenacity>=9.1.4
+
+# Type checking only: stubs/voluptuous re-exports probatio, the library Home
+# Assistant actually runs `voluptuous` as. HA >= 2026.9 already depends on it;
+# listed so mypy also works against environments that don't.
+probatio>=0.11
