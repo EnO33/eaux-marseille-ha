@@ -37,6 +37,7 @@ from .exceptions import (
 from .models import ConsumptionData
 
 __all__ = [
+    "PROVIDERS",
     "ConsumptionData",
     "EauxDeMarseilleApiError",
     "EauxDeMarseilleAuthError",
@@ -44,6 +45,7 @@ __all__ = [
     "EauxDeMarseilleError",
     "EauxDeMarseilleNoDataError",
     "EauxDeMarseilleSessionExpiredError",
+    "Provider",
 ]
 
 _LOGGER = logging.getLogger(__name__)
@@ -299,7 +301,3 @@ class EauxDeMarseilleClient:
             f"/Consommation/listeConsommationsInstanceAlerteChart/"
             f"{self._contract_id}/{start}/{end}/{granularity}/true"
         )
-
-
-# Public re-exports for convenience.
-__all__ += ["PROVIDERS", "Provider"]
