@@ -116,7 +116,15 @@ plugins = []
 
 [[tool.mypy.overrides]]
 # We import a lot of HA helpers without strict types upstream.
-module = ["homeassistant.*", "aiohttp.*", "yarl.*", "voluptuous.*", "aioresponses.*"]
+# probatio replaces voluptuous from HA 2026.10; absent on older releases (see _vol.py).
+module = [
+    "homeassistant.*",
+    "aiohttp.*",
+    "yarl.*",
+    "voluptuous.*",
+    "probatio.*",
+    "aioresponses.*",
+]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -171,16 +179,16 @@ forbidden_modules = [
 # ---------------------------------------------------------------------
 
 [tool.deptry]
-# homeassistant, aiohttp, yarl and voluptuous are provided by the Home
-# Assistant runtime; HA integrations import them without declaring them as
+# homeassistant, aiohttp, yarl and voluptuous/probatio are provided by the
+# Home Assistant runtime; HA integrations import them without declaring them as
 # requirements (manifest.json lists only tenacity). They are ignored
 # whether deptry classifies them as missing (DEP001, when HA isn't
 # installed in the run env) or transitive (DEP003, when it is). The
 # residual signal deptry still provides: tenacity must stay used (DEP002)
 # and no *other* undeclared third-party import may sneak in.
 [tool.deptry.per_rule_ignores]
-DEP001 = ["homeassistant", "aiohttp", "yarl", "voluptuous"]
-DEP003 = ["homeassistant", "aiohttp", "yarl", "voluptuous"]
+DEP001 = ["homeassistant", "aiohttp", "yarl", "voluptuous", "probatio"]
+DEP003 = ["homeassistant", "aiohttp", "yarl", "voluptuous", "probatio"]
 
 # ---------------------------------------------------------------------
 # Vulture: dead-code detection

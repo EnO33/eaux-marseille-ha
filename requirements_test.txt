@@ -3,12 +3,7 @@
 # those pins here — pip resolves to whatever the upstream package wants,
 # which keeps us aligned with the version Home Assistant core itself
 # tests against.
-#
-# Pinned exactly: each release pins one Home Assistant version, including
-# betas (0.13.368 -> homeassistant==2026.10.0b0). An open lower bound let CI
-# drift onto HA betas and break unrelated PRs. Keep this on the release that
-# matches the latest *stable* HA; Dependabot proposes bumps in their own PR.
-pytest-homeassistant-custom-component==0.13.367
+pytest-homeassistant-custom-component>=0.13.339
 aioresponses>=0.7.9
 
 # Runtime dependencies declared in custom_components/eaux_marseille/manifest.json.

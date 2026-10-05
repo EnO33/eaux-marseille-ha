@@ -18,12 +18,12 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-import voluptuous as vol
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import ServiceValidationError
 
 from ._client_factory import build_client
+from ._vol import vol
 from .const import CONF_CONTRACT_ID, DOMAIN
 from .statistics import async_import_historical_statistics
 

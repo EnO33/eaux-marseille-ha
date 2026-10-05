@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Weekly run so a new Home Assistant beta that breaks us is caught even
+  # when no PR is open (same cadence as Dependabot and the upstream check).
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
 
 jobs:
   lint:
@@ -43,9 +48,17 @@ jobs:
       - name: Duplication (pylint)
         run: python -m pylint custom_components/eaux_marseille --disable=all --enable=duplicate-code --score=n
 
+  # Typecheck and Pytest run against two Home Assistant channels: the
+  # latest stable release and the latest release overall (a beta during
+  # HA's beta week). The stable leg keeps the historical job names, which
+  # branch protection requires. See .github/scripts/phacc_version.py.
   typecheck:
-    name: Typecheck (mypy strict)
+    name: Typecheck (mypy strict)${{ matrix.ha == 'latest' && ' - HA latest' || '' }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ha: [stable, latest]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -54,14 +67,19 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install mypy
-          pip install -r requirements_test.txt
+          PHACC=$(python .github/scripts/phacc_version.py ${{ matrix.ha }})
+          pip install mypy -r requirements_test.txt "pytest-homeassistant-custom-component==$PHACC"
+          python -c "import homeassistant.const as c; print('Home Assistant', c.__version__)"
       - name: Mypy
         run: python -m mypy custom_components/eaux_marseille/
 
   test:
-    name: Pytest
+    name: Pytest${{ matrix.ha == 'latest' && ' - HA latest' || '' }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ha: [stable, latest]
 
     steps:
       - uses: actions/checkout@v7
@@ -79,7 +97,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements_test.txt
+          PHACC=$(python .github/scripts/phacc_version.py ${{ matrix.ha }})
+          pip install -r requirements_test.txt "pytest-homeassistant-custom-component==$PHACC"
+          python -c "import homeassistant.const as c; print('Home Assistant', c.__version__)"
 
       - name: Run tests with coverage
         run: |

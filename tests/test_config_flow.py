@@ -12,13 +12,13 @@ import pytest
 from homeassistant import config_entries
 from homeassistant.const import CONF_PASSWORD
 from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.data_entry_flow import FlowResultType, InvalidData
 
 from custom_components.eaux_marseille.api import (
     EauxDeMarseilleApiError,
     EauxDeMarseilleAuthError,
 )
-from custom_components.eaux_marseille.const import DOMAIN
+from custom_components.eaux_marseille.const import CONF_PROVIDER, DOMAIN
 
 from .conftest import MOCK_CONFIG_ENTRY_DATA, MOCK_CONSUMPTION, MOCK_CONTRACT_ID
 
@@ -199,3 +199,20 @@ async def test_reauth_flow_cannot_connect(
 
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": "cannot_connect"}
+
+
+async def test_user_flow_rejects_unknown_provider(hass: HomeAssistant) -> None:
+    """Out-of-range input is rejected by Home Assistant's own schema validation.
+
+    Our schemas must be built with the library HA validates with (voluptuous
+    before HA 2026.10, probatio from then on, see ``_vol``). If they were
+    not, HA would not recognise the validation error and the flow would
+    raise a foreign exception instead of ``InvalidData``.
+    """
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    with pytest.raises(InvalidData):
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"], {**MOCK_CONFIG_ENTRY_DATA, CONF_PROVIDER: "unknown"}
+        )

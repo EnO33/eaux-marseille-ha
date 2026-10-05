@@ -36,7 +36,4 @@ updates:
       test-dependencies:
         applies-to: version-updates
         patterns: ["*"]
-        # Each bump moves the Home Assistant version under test (sometimes
-        # to a beta), so it gets its own PR instead of riding along.
-        exclude-patterns: ["pytest-homeassistant-custom-component"]
         update-types: ["minor", "patch"]

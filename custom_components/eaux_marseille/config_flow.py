@@ -6,10 +6,10 @@ import logging
 from collections.abc import Mapping
 from typing import Any
 
-import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 
+from ._vol import vol
 from .api import EauxDeMarseilleApiError, EauxDeMarseilleAuthError, EauxDeMarseilleClient
 from .const import CONF_CONTRACT_ID, CONF_PROVIDER, DEFAULT_PROVIDER, DOMAIN, Provider
 
