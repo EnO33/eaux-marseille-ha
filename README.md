@@ -128,7 +128,7 @@ This pulls directly from the imported external statistic — no separate templat
 
 ## Requirements
 
-- Home Assistant 2025.4 or later
+- Home Assistant 2025.11 or later
 - An active account on one of the three customer portals (SEM, SEMM or Vivaigo)
 - Your contract number (visible on bills or in the portal URL after login)
 
