@@ -86,16 +86,7 @@ def async_register_services(hass: HomeAssistant) -> None:
         finally:
             await client.close()
 
-    # HA 2026.10 types service schemas as probatio; vol.Schema is still accepted at runtime.
+    hass.services.async_register(DOMAIN, SERVICE_REFRESH, _async_refresh, schema=_SCHEMA)
     hass.services.async_register(
-        DOMAIN,
-        SERVICE_REFRESH,
-        _async_refresh,
-        schema=_SCHEMA,  # type: ignore[arg-type]
-    )
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_REIMPORT_STATISTICS,
-        _async_reimport,
-        schema=_SCHEMA,  # type: ignore[arg-type]
+        DOMAIN, SERVICE_REIMPORT_STATISTICS, _async_reimport, schema=_SCHEMA
     )

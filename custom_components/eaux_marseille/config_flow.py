@@ -112,7 +112,7 @@ class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call
 
         return self.async_show_form(
             step_id="user",
-            data_schema=STEP_USER_DATA_SCHEMA,  # type: ignore[arg-type]  # HA 2026.10 types schemas as probatio; vol.Schema still accepted at runtime
+            data_schema=STEP_USER_DATA_SCHEMA,
             errors=errors,
         )
 
@@ -158,7 +158,7 @@ class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call
 
         return self.async_show_form(
             step_id="reauth_confirm",
-            data_schema=STEP_REAUTH_DATA_SCHEMA,  # type: ignore[arg-type]  # HA 2026.10 types schemas as probatio; vol.Schema still accepted at runtime
+            data_schema=STEP_REAUTH_DATA_SCHEMA,
             description_placeholders={
                 "username": self._reauth_entry.data[CONF_USERNAME],
             },
@@ -219,6 +219,6 @@ class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call
         )
         return self.async_show_form(
             step_id="reconfigure",
-            data_schema=schema,  # type: ignore[arg-type]  # HA 2026.10 types schemas as probatio; vol.Schema still accepted at runtime
+            data_schema=schema,
             errors=errors,
         )
