@@ -128,7 +128,7 @@ Cette carte lit directement la statistique externe importée — pas besoin de c
 
 ## Prérequis
 
-- Home Assistant 2025.4 ou plus récent
+- Home Assistant 2025.11 ou plus récent
 - Un compte actif sur l'un des trois portails clients (SEM, SEMM ou Vivaigo)
 - Votre numéro de contrat (visible sur vos factures ou dans l'URL du portail après connexion)
 
