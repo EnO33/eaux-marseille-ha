@@ -14,4 +14,4 @@ tenacity>=9.2.1
 # Type checking only: stubs/voluptuous re-exports probatio, the library Home
 # Assistant actually runs `voluptuous` as. HA >= 2026.9 already depends on it;
 # listed so mypy also works against environments that don't.
-probatio>=0.11
+probatio>=0.13.0
