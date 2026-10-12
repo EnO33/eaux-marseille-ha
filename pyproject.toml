@@ -7,7 +7,7 @@
 name = "eaux-marseille-ha"
 dynamic = ["version"]
 requires-python = ">=3.13"
-dependencies = ["tenacity>=8.0"]
+dependencies = ["tenacity>=9.2.1"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

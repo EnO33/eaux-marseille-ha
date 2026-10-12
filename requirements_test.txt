@@ -9,7 +9,7 @@ aioresponses>=0.7.9
 # Runtime dependencies declared in custom_components/eaux_marseille/manifest.json.
 # Mirrored here so the CI test environment has them available without
 # pulling them in via Home Assistant's full manifest install.
-tenacity>=9.1.4
+tenacity>=9.2.1
 
 # Type checking only: stubs/voluptuous re-exports probatio, the library Home
 # Assistant actually runs `voluptuous` as. HA >= 2026.9 already depends on it;
