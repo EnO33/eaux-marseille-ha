@@ -19,22 +19,20 @@ Transport (retry/backoff, JSON parsing, HTTP-error mapping) is delegated to
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Any, TypeVar
+from typing import Any
 
 import aiohttp
 
 from ._http import request_with_retry
+from ._session import SessionGuard
 from .const import MobileEndpoints
 from .exceptions import (
     EauxDeMarseilleApiError,
     EauxDeMarseilleAuthError,
-    EauxDeMarseilleSessionExpiredError,
 )
 
 _LOGGER = logging.getLogger(__name__)
-_T = TypeVar("_T")
 
 # The mobility API wraps every response in an envelope; this Code means OK.
 _SUCCESS_CODE = 100
@@ -44,8 +42,8 @@ _LITRES_PER_M3 = 1000
 class MobileClient:
     """Minimal async client for the SOMEI mobility API.
 
-    Auth is cached and transparently refreshed once on a session expiry,
-    mirroring :meth:`.api.EauxDeMarseilleClient._with_session_recovery`.
+    Auth is cached and transparently refreshed once on a session expiry by
+    the same :class:`._session.SessionGuard` as the web portal client.
     """
 
     def __init__(
@@ -65,10 +63,16 @@ class MobileClient:
         self._password = password
         self._contract_id = contract_id
         self._token: str | None = None
+        self._guard = SessionGuard(
+            "Mobile",
+            is_authenticated=lambda: self._token is not None,
+            authenticate=self._authenticate,
+            invalidate=self._drop_token,
+        )
 
     async def recent_daily(self) -> list[dict[str, Any]]:
         """Return the recent daily readings as web ``JOURNEE`` entries."""
-        data = await self._with_session_recovery(
+        data = await self._guard.run(
             lambda: self._request("GET", f"/getSyntheseConsoUnite/{self._contract_id}")
         )
         releves = (
@@ -85,7 +89,7 @@ class MobileClient:
         the months of ``year`` (up to the current month for the current
         year). Months with no data yield nothing and are simply skipped.
         """
-        return await self._with_session_recovery(lambda: self._collect_year(year))
+        return await self._guard.run(lambda: self._collect_year(year))
 
     async def _collect_year(self, year: int) -> list[dict[str, Any]]:
         now = datetime.now(UTC)
@@ -106,17 +110,8 @@ class MobileClient:
         releves = result.get("Releves") if isinstance(result, dict) else None
         return [entry for r in releves or [] if (entry := _to_web_entry(r)) is not None]
 
-    async def _with_session_recovery(self, action: Callable[[], Awaitable[_T]]) -> _T:
-        """Authenticate if needed, retrying once on a session expiry."""
-        if self._token is None:
-            await self._authenticate()
-        try:
-            return await action()
-        except EauxDeMarseilleSessionExpiredError as err:
-            _LOGGER.debug("Mobile session expired (%s); re-authenticating", err)
-            self._token = None
-            await self._authenticate()
-            return await action()
+    def _drop_token(self) -> None:
+        self._token = None
 
     async def _authenticate(self) -> None:
         body = {
@@ -150,7 +145,7 @@ class MobileClient:
             "User-Agent": self._endpoints.user_agent,
         }
         if authed:
-            if self._token is None:  # pragma: no cover - guarded by _with_session_recovery
+            if self._token is None:  # pragma: no cover - guarded by SessionGuard
                 raise EauxDeMarseilleAuthError("not authenticated")
             headers["token"] = self._token
         kwargs: dict[str, Any] = {} if body is None else {"json": body}

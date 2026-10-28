@@ -136,13 +136,14 @@ disable_error_code = ["no-untyped-def", "type-arg", "no-untyped-call"]
 root_package = "custom_components.eaux_marseille"
 
 [[tool.importlinter.contracts]]
-name = "Auth/transport stack stays layered (api -> _auth -> _http -> _redirects)"
+name = "Auth/transport stack stays layered (api -> _auth -> _http -> _redirects -> _session)"
 type = "layers"
 layers = [
     "custom_components.eaux_marseille.api",
     "custom_components.eaux_marseille._auth",
     "custom_components.eaux_marseille._http",
     "custom_components.eaux_marseille._redirects",
+    "custom_components.eaux_marseille._session",
 ]
 
 [[tool.importlinter.contracts]]
@@ -159,6 +160,7 @@ forbidden_modules = [
     "custom_components.eaux_marseille._mobile",
     "custom_components.eaux_marseille._http",
     "custom_components.eaux_marseille._redirects",
+    "custom_components.eaux_marseille._session",
     "custom_components.eaux_marseille._client_factory",
     "custom_components.eaux_marseille.coordinator",
     "custom_components.eaux_marseille.config_flow",
