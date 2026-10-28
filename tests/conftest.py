@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 import sys
+from datetime import UTC, datetime, tzinfo
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -148,6 +149,22 @@ def mock_client() -> MagicMock:
     client.fetch_daily_range = AsyncMock(return_value=[])
     client.close = AsyncMock(return_value=None)
     return client
+
+
+# 2027-01-01T00:30 in Europe/Paris, still 2026 in UTC.
+NEW_YEAR_IN_PARIS_UTC = datetime(2026, 12, 31, 23, 30, tzinfo=UTC)
+
+
+@pytest.fixture
+def new_year_in_paris(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Freeze the clock behind ``const.portal_now`` at NEW_YEAR_IN_PARIS_UTC."""
+
+    class _FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz: tzinfo | None = None) -> datetime:
+            return NEW_YEAR_IN_PARIS_UTC.astimezone(tz)
+
+    monkeypatch.setattr("custom_components.eaux_marseille.const.datetime", _FrozenDatetime)
 
 
 if HAS_HA:

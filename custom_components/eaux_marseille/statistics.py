@@ -36,7 +36,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 
 from .api import EauxDeMarseilleClient
-from .const import DOMAIN
+from .const import DOMAIN, portal_now
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -146,14 +146,13 @@ async def _collect_series(
       order into a running sum would assign the largest sum to the
       earliest day, leaving a statistic whose cumulative total decreases
       over time (it reads as empty/broken in the Energy dashboard).
-    * A year's query window can return a boundary day that also belongs
-      to the adjacent year — a ``dateReleve`` like
-      ``2026-01-01T00:00:00+02:00`` (22:00 UTC the previous day) falls
-      inside the prior year's UTC window. Without dedup that day is
-      counted in both yearly fetches and inflates the cumulative total.
+    * Two yearly fetches may return the same boundary day (while year
+      windows were bounded in UTC, ``2026-01-01T00:00:00+01:00`` fell
+      inside the prior year's window). Without dedup that day would be
+      counted twice and inflate the cumulative total.
     """
     by_date: dict[str, dict[str, Any]] = {}
-    current_year = datetime.now(UTC).year
+    current_year = portal_now().year
 
     for year in range(_START_YEAR, current_year + 1):
         try:

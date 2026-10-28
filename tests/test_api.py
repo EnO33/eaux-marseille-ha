@@ -25,7 +25,12 @@ from custom_components.eaux_marseille.api import (
     EauxDeMarseilleNoDataError,
     EauxDeMarseilleSessionExpiredError,
 )
-from custom_components.eaux_marseille.const import MOBILE_ENDPOINTS, PROVIDERS, Provider
+from custom_components.eaux_marseille.const import (
+    MOBILE_ENDPOINTS,
+    PROVIDERS,
+    Provider,
+    portal_now,
+)
 from custom_components.eaux_marseille.diagnostics import _scrub_exception
 from custom_components.eaux_marseille.models import encode_context_cookie
 
@@ -36,6 +41,9 @@ _PORTAL_URL = PROVIDERS[Provider.SEM].url
 _API_BASE = PROVIDERS[Provider.SEM].api_base
 
 CONTRACT_ID = "1234567"
+
+# 2027-01-01T00:00 in Europe/Paris (UTC+1 in winter).
+_PARIS_2027_START = int(datetime(2026, 12, 31, 23, tzinfo=UTC).timestamp())
 
 
 # Override pytest-homeassistant-custom-component's autouse fixtures that check
@@ -757,6 +765,30 @@ class TestDailyTelemetry:
         data = await client.fetch()
         assert data.index_precise_m3 == 212.982
 
+    def test_chart_path_bounds_year_in_portal_time(self, client: EauxDeMarseilleClient) -> None:
+        """The chart window runs from 1 January to 31 December in Paris
+        time (UTC+1 in winter), not in UTC."""
+        end = int(datetime(2027, 12, 31, 22, 59, 59, tzinfo=UTC).timestamp())
+        path = client._chart_path(2027, "MOIS")
+        assert path.endswith(f"/{_PARIS_2027_START}/{end}/MOIS/true")
+
+    @pytest.mark.usefixtures("new_year_in_paris")
+    async def test_fetch_queries_the_portal_year_at_new_year(
+        self, client: EauxDeMarseilleClient, mock_auth: aioresponses
+    ) -> None:
+        """Just after midnight on 1 January in Paris (still 31 December in
+        UTC), fetch() asks for the new year's charts."""
+        self._register_data_endpoints(mock_auth)
+        mock_auth.get(
+            re.compile(r".*listeConsommationsInstanceAlerteChart.*/JOURNEE/true"),
+            payload={"consommations": []},
+        )
+        await client.fetch()
+
+        charts = [str(url) for _, url in mock_auth.requests if "AlerteChart" in str(url)]
+        assert charts
+        assert all(f"/{_PARIS_2027_START}/" in url for url in charts)
+
     async def test_fetch_daily_range_returns_entries(
         self, client: EauxDeMarseilleClient, mock_auth: aioresponses
     ) -> None:
@@ -796,7 +828,7 @@ class TestDailyTelemetry:
         client = EauxDeMarseilleClient(
             login="user@example.com", password="password", contract_id=CONTRACT_ID
         )
-        year = datetime.now(UTC).year
+        year = portal_now().year
         mock_auth.get(
             re.compile(r".*listeConsommationsInstanceAlerteChart.*/JOURNEE/true"),
             status=400,

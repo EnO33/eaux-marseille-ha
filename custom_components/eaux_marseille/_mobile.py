@@ -19,14 +19,13 @@ Transport (retry/backoff, JSON parsing, HTTP-error mapping) is delegated to
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
 from typing import Any
 
 import aiohttp
 
 from ._http import request_with_retry
 from ._session import SessionGuard
-from .const import MobileEndpoints
+from .const import MobileEndpoints, portal_now
 from .exceptions import (
     EauxDeMarseilleApiError,
     EauxDeMarseilleAuthError,
@@ -92,7 +91,7 @@ class MobileClient:
         return await self._guard.run(lambda: self._collect_year(year))
 
     async def _collect_year(self, year: int) -> list[dict[str, Any]]:
-        now = datetime.now(UTC)
+        now = portal_now()
         last_month = now.month if year == now.year else 12
         entries: list[dict[str, Any]] = []
         for month in range(1, last_month + 1):
