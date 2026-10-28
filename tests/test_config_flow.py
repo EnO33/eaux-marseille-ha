@@ -19,7 +19,7 @@ from custom_components.eaux_marseille.api import (
     EauxDeMarseilleAuthError,
     EauxDeMarseilleContractError,
 )
-from custom_components.eaux_marseille.const import CONF_PROVIDER, DOMAIN
+from custom_components.eaux_marseille.const import CONF_CONTRACT_ID, CONF_PROVIDER, DOMAIN
 
 from .conftest import MOCK_CONFIG_ENTRY_DATA, MOCK_CONSUMPTION, MOCK_CONTRACT_ID
 
@@ -275,3 +275,68 @@ async def test_user_flow_rejects_unknown_provider(hass: HomeAssistant) -> None:
         await hass.config_entries.flow.async_configure(
             result["flow_id"], {**MOCK_CONFIG_ENTRY_DATA, CONF_PROVIDER: "unknown"}
         )
+
+
+_MALFORMED_CONTRACT_IDS = ["", "   ", "123/456", "../1234567", "1234567?x=1", "12 34", "1234%2F5"]
+
+
+@pytest.mark.parametrize("contract_id", _MALFORMED_CONTRACT_IDS)
+async def test_user_flow_rejects_malformed_contract(
+    hass: HomeAssistant, mock_client: MagicMock, contract_id: str
+) -> None:
+    """A contract number that could change the request path never reaches the portal."""
+    with patch(
+        "custom_components.eaux_marseille.config_flow.EauxDeMarseilleClient",
+        return_value=mock_client,
+    ) as client_cls:
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input={**MOCK_CONFIG_ENTRY_DATA, CONF_CONTRACT_ID: contract_id}
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {CONF_CONTRACT_ID: "invalid_contract_format"}
+    client_cls.assert_not_called()
+
+
+@pytest.mark.parametrize("contract_id", _MALFORMED_CONTRACT_IDS)
+async def test_reconfigure_flow_rejects_malformed_contract(
+    hass: HomeAssistant, mock_client: MagicMock, mock_config_entry, contract_id: str
+) -> None:
+    """Reconfigure applies the same contract number format check."""
+    with patch(
+        "custom_components.eaux_marseille.config_flow.EauxDeMarseilleClient",
+        return_value=mock_client,
+    ) as client_cls:
+        result = await mock_config_entry.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input={**MOCK_CONFIG_ENTRY_DATA, CONF_CONTRACT_ID: contract_id}
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "reconfigure"
+    assert result["errors"] == {CONF_CONTRACT_ID: "invalid_contract_format"}
+    client_cls.assert_not_called()
+
+
+async def test_user_flow_strips_contract_whitespace(
+    hass: HomeAssistant, mock_client: MagicMock
+) -> None:
+    """Spaces pasted around the contract number are dropped before it is stored."""
+    with ExitStack() as stack:
+        for cm in _full_client_mock(mock_client):
+            stack.enter_context(cm)
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={**MOCK_CONFIG_ENTRY_DATA, CONF_CONTRACT_ID: f"  {MOCK_CONTRACT_ID} "},
+        )
+        await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == MOCK_CONFIG_ENTRY_DATA
+    assert result["result"].unique_id.endswith(f"_{MOCK_CONTRACT_ID}")

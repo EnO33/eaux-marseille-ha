@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -27,6 +28,12 @@ _PROVIDER_LABELS = {
     Provider.VIVAIGO: "Vivaigo (Salon, Berre, Lambesc, Eyguières…)",
 }
 
+# The contract number goes into URL paths and the mobility request body:
+# accept only characters that cannot change the path (no "/", "?", "..").
+# Letters, "-" and "_" are allowed because the SEMM and Vivaigo formats
+# are not verified on a real contract.
+_CONTRACT_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,32}")
+
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_PROVIDER, default=DEFAULT_PROVIDER.value): vol.In(
@@ -43,6 +50,14 @@ STEP_REAUTH_DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_PASSWORD): str,
     }
 )
+
+
+def _with_clean_contract(user_input: dict[str, Any]) -> dict[str, Any] | None:
+    """Return ``user_input`` with the contract number stripped, or ``None`` if malformed."""
+    contract_id = user_input[CONF_CONTRACT_ID].strip()
+    if not _CONTRACT_ID_RE.fullmatch(contract_id):
+        return None
+    return {**user_input, CONF_CONTRACT_ID: contract_id}
 
 
 async def _validate_credentials(
@@ -100,6 +115,10 @@ class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
 
+        if user_input is not None:
+            user_input = _with_clean_contract(user_input)
+            if user_input is None:
+                errors[CONF_CONTRACT_ID] = "invalid_contract_format"
         if user_input is not None:
             provider = Provider(user_input[CONF_PROVIDER])
             # Make the unique_id provider-aware so users can configure the
@@ -193,6 +212,10 @@ class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call
         entry = self._get_reconfigure_entry()
         errors: dict[str, str] = {}
 
+        if user_input is not None:
+            user_input = _with_clean_contract(user_input)
+            if user_input is None:
+                errors[CONF_CONTRACT_ID] = "invalid_contract_format"
         if user_input is not None:
             provider = Provider(user_input[CONF_PROVIDER])
             # If the provider/contract pair changed, make sure another
