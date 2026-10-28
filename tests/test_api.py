@@ -335,6 +335,35 @@ class TestAuthentication:
             with pytest.raises(EauxDeMarseilleApiError, match="HTTP 503 on landing page"):
                 await client.authenticate()
 
+    @pytest.mark.parametrize(
+        ("location", "match"),
+        [
+            ("https://attacker.example/", "off-portal host"),
+            ("http://espaceclients.eauxdemarseille.fr/", "non-HTTPS scheme"),
+        ],
+    )
+    async def test_authenticate_landing_page_rejects_unsafe_redirect(
+        self, client: EauxDeMarseilleClient, location: str, match: str
+    ) -> None:
+        """The landing page obeys the same redirect policy as API calls."""
+        with aioresponses() as m:
+            m.get(_PORTAL_URL + "/", status=302, headers={"Location": location})
+
+            with pytest.raises(EauxDeMarseilleApiError, match=match):
+                await client.authenticate()
+            assert len(m.requests) == 1
+
+    async def test_authenticate_landing_page_follows_same_origin_redirect(
+        self, client: EauxDeMarseilleClient
+    ) -> None:
+        """A same-origin redirect on the landing page is still followed."""
+        with aioresponses() as m:
+            m.get(_PORTAL_URL + "/", status=302, headers={"Location": "/accueil"})
+            m.get(_PORTAL_URL + "/accueil", status=503, body="maintenance")
+
+            with pytest.raises(EauxDeMarseilleApiError, match="HTTP 503 on landing page"):
+                await client.authenticate()
+
     async def test_authenticate_landing_page_network_error(
         self, client: EauxDeMarseilleClient
     ) -> None:

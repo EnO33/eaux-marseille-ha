@@ -150,11 +150,15 @@ class PortalAuth:
         self._app_token = None
         self._ael_token = None
         try:
-            async with self._session.get(
+            # Same redirect policy as every other call: the landing page
+            # carries no secret, but nothing should leave the portal's origin.
+            async with _http.open_following_redirects(
+                self._session,
+                "GET",
                 f"{self._endpoints.url}/",
                 headers=self._base_headers,
                 timeout=self._timeout,
-                allow_redirects=True,
+                allowed_host=self._endpoints.host,
             ) as response:
                 await response.read()
                 _LOGGER.debug(

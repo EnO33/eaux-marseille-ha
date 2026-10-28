@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 import aiohttp
@@ -95,6 +97,32 @@ async def _send_following_redirects(
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Send a single request, walking through any redirect chain."""
+    async with open_following_redirects(
+        session,
+        method,
+        url,
+        timeout=timeout,
+        headers=headers,
+        allowed_host=allowed_host,
+        **kwargs,
+    ) as response:
+        await _raise_for_status(response, str(response.url))
+        ct = response.headers.get("Content-Type", "<none>")
+        return await _parse_json_or_raise(response, str(response.url), ct)
+
+
+@asynccontextmanager
+async def open_following_redirects(
+    session: aiohttp.ClientSession,
+    method: str,
+    url: str,
+    *,
+    timeout: aiohttp.ClientTimeout,
+    headers: dict[str, str],
+    allowed_host: str,
+    **kwargs: Any,
+) -> AsyncIterator[aiohttp.ClientResponse]:
+    """Yield the final non-3xx response, refusing off-portal redirects."""
     cur_method, cur_url = method, url
 
     for hop in range(MAX_REDIRECTS + 1):
@@ -128,8 +156,8 @@ async def _send_following_redirects(
                 )
                 continue
 
-            await _raise_for_status(response, cur_url)
-            return await _parse_json_or_raise(response, cur_url, ct)
+            yield response
+            return
 
     raise EauxDeMarseilleApiError(  # pragma: no cover
         f"Redirect loop guard failed for {url}"
