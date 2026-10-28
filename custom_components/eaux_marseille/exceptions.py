@@ -17,7 +17,16 @@ class EauxDeMarseilleAuthError(EauxDeMarseilleError):
 
 
 class EauxDeMarseilleApiError(EauxDeMarseilleError):
-    """Raised when the API responds with an unexpected payload or status."""
+    """Raised when the API responds with an unexpected payload or status.
+
+    ``status`` holds the HTTP status when the portal answered with a 4xx,
+    and is ``None`` for transport failures, 5xx after retries and
+    unparsable bodies, so callers can tell a rejection from an outage.
+    """
+
+    def __init__(self, message: str = "", *, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
 
 
 class EauxDeMarseilleSessionExpiredError(EauxDeMarseilleApiError):
