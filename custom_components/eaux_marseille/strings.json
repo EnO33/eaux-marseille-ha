@@ -35,6 +35,7 @@
     "error": {
       "invalid_auth": "Invalid credentials. Check your email and password.",
       "invalid_contract": "Contract not found on this account. Check the contract number and the water utility.",
+      "invalid_contract_format": "Invalid contract number. Enter it as shown on your bill, without spaces or symbols.",
       "cannot_connect": "Unable to connect to the portal. Try again later."
     },
     "abort": {
