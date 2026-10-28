@@ -22,8 +22,9 @@ from .statistics import async_import_historical_statistics
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 # How often to re-run the historical statistics import after the initial
-# one. The import is idempotent (already-imported months are skipped via
-# the recorder's last timestamp), so a daily cadence is cheap: it lets a
+# one. The import is idempotent (the recorder upserts each point) and
+# years the portal no longer revises are cached by the client, so a daily
+# cadence is cheap: it lets a
 # freshly-activated contract pick up its statistic within a day of the
 # portal exposing data, and refreshes the current month on the Energy
 # dashboard without needing a Home Assistant restart.

@@ -138,12 +138,12 @@ root_package = "custom_components.eaux_marseille"
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
-name = "Transport stack stays layered (api -> _auth | _mobile -> _http -> _redirects -> _session)"
+name = "Transport stack stays layered (api -> _auth | _mobile | _year_cache -> _http -> _redirects -> _session)"
 type = "layers"
 layers = [
     "custom_components.eaux_marseille.api",
     # Independent siblings: the mobility client never reaches into the portal login.
-    "custom_components.eaux_marseille._auth | custom_components.eaux_marseille._mobile",
+    "custom_components.eaux_marseille._auth | custom_components.eaux_marseille._mobile | custom_components.eaux_marseille._year_cache",
     "custom_components.eaux_marseille._http",
     "custom_components.eaux_marseille._redirects",
     "custom_components.eaux_marseille._session",
@@ -164,6 +164,7 @@ forbidden_modules = [
     "custom_components.eaux_marseille._http",
     "custom_components.eaux_marseille._redirects",
     "custom_components.eaux_marseille._session",
+    "custom_components.eaux_marseille._year_cache",
     "custom_components.eaux_marseille._client_factory",
     "custom_components.eaux_marseille.coordinator",
     "custom_components.eaux_marseille.config_flow",
@@ -183,6 +184,7 @@ source_modules = [
     "custom_components.eaux_marseille._http",
     "custom_components.eaux_marseille._redirects",
     "custom_components.eaux_marseille._session",
+    "custom_components.eaux_marseille._year_cache",
     "custom_components.eaux_marseille.const",
     "custom_components.eaux_marseille.exceptions",
     "custom_components.eaux_marseille.models",

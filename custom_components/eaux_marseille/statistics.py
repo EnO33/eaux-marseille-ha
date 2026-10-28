@@ -12,7 +12,9 @@ final total, and quarterly-read meters get their months reconciled
 when a reading lands. An "import once, never touch again" approach
 froze those months on stale partial values (#31). Re-deriving the
 whole series from the live data each run keeps the Energy dashboard
-correct and is self-healing for already-corrupted statistics.
+correct and is self-healing for already-corrupted statistics. Only the
+years before last are served from the client's memory (#98): the portal
+no longer revises them.
 """
 
 from __future__ import annotations

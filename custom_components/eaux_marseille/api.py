@@ -11,6 +11,7 @@ The auth flow lives in :mod:`._auth`, the HTTP transport in
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from datetime import datetime
@@ -21,6 +22,7 @@ import aiohttp
 from ._auth import PortalAuth
 from ._mobile import MobileClient
 from ._session import SessionGuard
+from ._year_cache import ClosedYearCache
 from .const import (
     DEFAULT_PROVIDER,
     MOBILE_ENDPOINTS,
@@ -131,6 +133,7 @@ class EauxDeMarseilleClient:
             if mobile_endpoints is not None
             else None
         )
+        self._closed_years = ClosedYearCache()
 
     async def close(self) -> None:
         """Close the underlying session if we own it."""
@@ -182,14 +185,16 @@ class EauxDeMarseilleClient:
 
         Reuses the cached AEL session token across calls and
         transparently re-authenticates once if the portal returns 401/403
-        (token expired). Net effect: 3 requests/poll in the steady state
-        instead of 5 auth + 3 fetch.
+        (token expired). Net effect: 4 concurrent requests/poll in the
+        steady state instead of 5 auth + 4 fetch.
         """
         return await self._guard.run(self._fetch_inner)
 
     async def fetch_monthly_range(self, year: int) -> list[dict[str, Any]]:
         """Return the raw monthly consumption entries for ``year``."""
-        return await self._guard.run(lambda: self._chart_entries(year, "MOIS"))
+        return await self._closed_years.get(
+            "MOIS", year, lambda: self._guard.run(lambda: self._chart_entries(year, "MOIS"))
+        )
 
     async def fetch_daily_range(self, year: int) -> list[dict[str, Any]]:
         """Return the raw daily consumption entries for ``year``.
@@ -199,6 +204,9 @@ class EauxDeMarseilleClient:
         exposes daily readings even for monthly-only web contracts). The
         fetch is tolerant throughout, so callers never break.
         """
+        return await self._closed_years.get("JOURNEE", year, lambda: self._daily_range(year))
+
+    async def _daily_range(self, year: int) -> list[dict[str, Any]]:
         entries = await self._guard.run(lambda: self._chart_entries(year, "JOURNEE", optional=True))
         # The mobility API only carries recent history, so older years stay
         # web-only to avoid pointless month-by-month requests.
@@ -207,12 +215,26 @@ class EauxDeMarseilleClient:
         return entries
 
     async def _fetch_inner(self) -> ConsumptionData:
-        last = await self._safe_get(self._last_billed_path)
         year = portal_now().year
-        monthly = await self._safe_get(self._chart_path(year, "MOIS"))
-        history = await self._safe_get(
-            f"/Facturation/listeConsommationsFacturees/{self._contract_id}"
+        # The four requests are independent: run them concurrently. A
+        # TaskGroup cancels the others as soon as one fails, so a session
+        # expiry is retried by SessionGuard without stray requests in flight.
+        try:
+            async with asyncio.TaskGroup() as group:
+                last = group.create_task(self._safe_get(self._last_billed_path))
+                monthly = group.create_task(self._safe_get(self._chart_path(year, "MOIS")))
+                history = group.create_task(
+                    self._safe_get(f"/Facturation/listeConsommationsFacturees/{self._contract_id}")
+                )
+                daily = group.create_task(self._recent_daily(year))
+        except BaseExceptionGroup as errors:
+            raise _first_error(errors) from None
+        return ConsumptionData.from_api_responses(
+            last.result(), monthly.result(), history.result(), daily_entries=daily.result()
         )
+
+    async def _recent_daily(self, year: int) -> list[dict[str, Any]]:
+        """Daily entries for the poll: web JOURNEE, else the mobility API."""
         # Always attempt the daily series: when the contract exposes it
         # (communicating meter) its latest entry carries a fresher index
         # (D-1) than the monthly chart. Tolerant — contracts without
@@ -223,9 +245,7 @@ class EauxDeMarseilleClient:
         # mobility API, which exposes it even for monthly-only web contracts.
         if not daily_entries and (mobile := self._mobile) is not None:
             daily_entries = await self._mobile_daily(mobile)
-        return ConsumptionData.from_api_responses(
-            last, monthly, history, daily_entries=daily_entries
-        )
+        return daily_entries
 
     async def _mobile_daily(self, mobile: MobileClient) -> list[dict[str, Any]]:
         """Recent daily entries from the mobility API — best-effort, never breaks the poll."""
@@ -314,3 +334,15 @@ class EauxDeMarseilleClient:
             f"/Consommation/listeConsommationsInstanceAlerteChart/"
             f"{self._contract_id}/{start}/{end}/{granularity}/true"
         )
+
+
+def _first_error(errors: BaseExceptionGroup[BaseException]) -> BaseException:
+    """Pick the error to re-raise from a failed poll, a session expiry first.
+
+    SessionGuard only re-authenticates on an expiry, so it must win over
+    any concurrent failure it may have caused.
+    """
+    return next(
+        (err for err in errors.exceptions if isinstance(err, EauxDeMarseilleSessionExpiredError)),
+        errors.exceptions[0],
+    )
