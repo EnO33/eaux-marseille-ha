@@ -10,7 +10,12 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 
-from .api import EauxDeMarseilleApiError, EauxDeMarseilleAuthError, EauxDeMarseilleClient
+from .api import (
+    EauxDeMarseilleApiError,
+    EauxDeMarseilleAuthError,
+    EauxDeMarseilleClient,
+    EauxDeMarseilleContractError,
+)
 from .const import CONF_CONTRACT_ID, CONF_PROVIDER, DEFAULT_PROVIDER, DOMAIN, Provider
 
 _LOGGER = logging.getLogger(__name__)
@@ -47,11 +52,12 @@ async def _validate_credentials(
     contract_id: str,
     provider: Provider,
 ) -> str | None:
-    """Authenticate against the portal.
+    """Authenticate against the portal and check the contract belongs to the account.
 
     Returns:
-        ``None`` on success, or one of ``"invalid_auth"`` / ``"cannot_connect"``
-        as an error key compatible with HA's config-flow error reporting.
+        ``None`` on success, or one of ``"invalid_auth"`` / ``"invalid_contract"``
+        / ``"cannot_connect"`` as an error key compatible with HA's config-flow
+        error reporting.
     """
     client = EauxDeMarseilleClient(
         login=username,
@@ -61,9 +67,13 @@ async def _validate_credentials(
     )
     try:
         await client.authenticate()
+        await client.check_contract()
     except EauxDeMarseilleAuthError as err:
         _LOGGER.warning("Authentication failed: %s", err)
         return "invalid_auth"
+    except EauxDeMarseilleContractError as err:
+        _LOGGER.warning("Contract check failed: %s", err)
+        return "invalid_contract"
     except EauxDeMarseilleApiError:
         _LOGGER.exception("API error during setup")
         return "cannot_connect"

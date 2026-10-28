@@ -16,6 +16,14 @@ class EauxDeMarseilleAuthError(EauxDeMarseilleError):
     """Raised when authentication fails (bad credentials, expired session)."""
 
 
+class EauxDeMarseilleContractError(EauxDeMarseilleError):
+    """Raised when the configured contract is not reachable from the account.
+
+    The portal answers 404 for a contract number outside the account, so a
+    typo is caught at setup instead of failing every poll afterwards.
+    """
+
+
 class EauxDeMarseilleApiError(EauxDeMarseilleError):
     """Raised when the API responds with an unexpected payload or status.
 

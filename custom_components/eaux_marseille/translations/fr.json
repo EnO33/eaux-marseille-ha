@@ -34,6 +34,7 @@
     },
     "error": {
       "invalid_auth": "Identifiants invalides. Vérifiez votre e-mail et votre mot de passe.",
+      "invalid_contract": "Contrat introuvable sur ce compte. Vérifiez le numéro de contrat et le fournisseur.",
       "cannot_connect": "Impossible de se connecter au portail. Réessayez plus tard."
     },
     "abort": {

@@ -22,6 +22,7 @@ from custom_components.eaux_marseille.api import (
     EauxDeMarseilleApiError,
     EauxDeMarseilleAuthError,
     EauxDeMarseilleClient,
+    EauxDeMarseilleContractError,
     EauxDeMarseilleNoDataError,
     EauxDeMarseilleSessionExpiredError,
 )
@@ -682,6 +683,45 @@ class TestFreshContract:
         await client.authenticate()
         entries = await client.fetch_monthly_range(2024)
         assert entries == []
+
+
+class TestCheckContract:
+    """``check_contract`` tells a contract outside the account from an outage."""
+
+    _LAST_BILLED_URL = f"{_API_BASE}/TableauDeBord/derniereConsommationFacturee/{CONTRACT_ID}"
+
+    async def test_contract_of_the_account_passes(
+        self, client: EauxDeMarseilleClient, mock_auth: aioresponses
+    ) -> None:
+        mock_auth.get(self._LAST_BILLED_URL, payload={"valeurIndex": 5.0})
+        await client.check_contract()
+
+    async def test_fresh_contract_without_data_passes(
+        self, client: EauxDeMarseilleClient, mock_auth: aioresponses
+    ) -> None:
+        """The soft 400 of a freshly activated contract is not a wrong number."""
+        mock_auth.get(
+            self._LAST_BILLED_URL,
+            status=400,
+            body=TestFreshContract._SOFT_400_BODY,
+            content_type="application/json",
+        )
+        await client.check_contract()
+
+    async def test_contract_outside_the_account_raises(
+        self, client: EauxDeMarseilleClient, mock_auth: aioresponses
+    ) -> None:
+        """SEM answers 404 for a contract number the account does not hold."""
+        mock_auth.get(self._LAST_BILLED_URL, status=404, body="")
+        with pytest.raises(EauxDeMarseilleContractError, match="HTTP 404"):
+            await client.check_contract()
+
+    async def test_portal_outage_is_not_a_contract_error(
+        self, client: EauxDeMarseilleClient, mock_auth: aioresponses
+    ) -> None:
+        mock_auth.get(self._LAST_BILLED_URL, status=500, repeat=True)
+        with pytest.raises(EauxDeMarseilleApiError):
+            await client.check_contract()
 
 
 class TestDailyTelemetry:
