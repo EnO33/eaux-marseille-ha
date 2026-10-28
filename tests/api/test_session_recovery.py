@@ -60,7 +60,9 @@ async def test_expired_session_recovers(client: EauxDeMarseilleClient, status: i
         m.get(LAST_BILLED_URL, status=status, body="session expired")
         register_auth_flow(m)
         m.get(LAST_BILLED_URL, payload={"valeurIndex": 42.0, "volumeConsoEnM3": 1.0})
-        _register_empty_charts_and_history(m)
+        # The poll's requests run concurrently: the others may already have
+        # been answered when the expiry aborts the first attempt.
+        _register_empty_charts_and_history(m, repeat=True)
 
         data = await client.fetch()
         assert data.index_m3 == 42.0

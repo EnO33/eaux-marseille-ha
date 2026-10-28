@@ -174,9 +174,9 @@ La combinaison *(fournisseur + numéro de contrat)* sert d'identifiant unique po
 
 L'intégration interroge le portail client **une fois par heure**. Cet intervalle est volontairement conservateur : les données du portail elles-mêmes sont mises à jour peu fréquemment (la plupart des compteurs télérelèvent une à deux fois par jour, les relevés facturés sont mensuels), donc un polling plus rapide ne ferait que solliciter le portail sans rien apporter de nouveau.
 
-Au premier ajout, l'intégration lance également un **import historique** des consommations mensuelles depuis janvier 2024, en arrière-plan. Aux redémarrages suivants, ce qui est déjà en base est conservé et seule l'année courante est rafraîchie — le coût de l'import historique est payé une seule fois.
+Au premier ajout, l'intégration lance également un **import historique** des consommations mensuelles depuis janvier 2024, en arrière-plan, plus une série journalière quand le compteur en expose une. L'import est rejoué une fois par jour et à chaque nouveau relevé, en recalculant la série pour corriger les mois que le portail révise. Les années antérieures à l'année dernière ne sont plus révisées : elles sont récupérées une fois par démarrage de Home Assistant puis gardées en mémoire.
 
-L'authentification réutilise un token de session mis en cache entre les polls (depuis v1.12.0). Le handshake complet en 5 étapes contre le portail n'est rejoué qu'au démarrage, ou quand le portail renvoie 401/403 (token expiré). En régime nominal la charge sur le portail est de 3 requêtes HTTP par heure et par contrat.
+L'authentification réutilise un token de session mis en cache entre les polls (depuis v1.12.0). Le handshake complet en 5 étapes contre le portail n'est rejoué qu'au démarrage, ou quand le portail renvoie 401/403 (token expiré). En régime nominal la charge sur le portail est de 4 requêtes HTTP simultanées par heure et par contrat.
 
 Si un poll échoue — portail KO, panne réseau, etc. — Home Assistant retentera à l'heure suivante et le capteur sera marqué `indisponible` en attendant le prochain succès.
 
