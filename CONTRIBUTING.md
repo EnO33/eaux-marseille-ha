@@ -87,4 +87,4 @@ Bump rules:
 - Minor (X.**Y**.0) — new feature, new sensor, dependency added
 - Major (**X**.0.0) — breaking change for users (removed config option, renamed entity, etc.)
 
-The minimum HA version is bumped via `hacs.json` (`homeassistant` field) and the README "Requirements" line. Keep the two in sync.
+The minimum HA version is bumped via `hacs.json` (`homeassistant` field) and the README "Requirements" line (both READMEs). Keep them in sync. CI tests that floor in the `minimum` leg, which installs the phacc release pinning exactly the `hacs.json` version: pick a version that phacc released (a `.0` usually is).
