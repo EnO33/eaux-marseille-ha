@@ -12,7 +12,7 @@ The auth flow lives in :mod:`._auth`, the HTTP transport in
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 import aiohttp
@@ -23,9 +23,11 @@ from ._session import SessionGuard
 from .const import (
     DEFAULT_PROVIDER,
     MOBILE_ENDPOINTS,
+    PORTAL_TZ,
     PROVIDERS,
     REQUEST_TIMEOUT_S,
     Provider,
+    portal_now,
 )
 from .exceptions import (
     EauxDeMarseilleApiError,
@@ -164,11 +166,7 @@ class EauxDeMarseilleClient:
         entries = await self._guard.run(lambda: self._chart_entries(year, "JOURNEE", optional=True))
         # The mobility API only carries recent history, so older years stay
         # web-only to avoid pointless month-by-month requests.
-        if (
-            not entries
-            and (mobile := self._mobile) is not None
-            and year >= datetime.now(UTC).year - 1
-        ):
+        if not entries and (mobile := self._mobile) is not None and year >= portal_now().year - 1:
             entries = await self._mobile_daily_range(mobile, year)
         return entries
 
@@ -176,7 +174,7 @@ class EauxDeMarseilleClient:
         last = await self._safe_get(
             f"/TableauDeBord/derniereConsommationFacturee/{self._contract_id}"
         )
-        year = datetime.now(UTC).year
+        year = portal_now().year
         monthly = await self._safe_get(self._chart_path(year, "MOIS"))
         history = await self._safe_get(
             f"/Facturation/listeConsommationsFacturees/{self._contract_id}"
@@ -274,8 +272,8 @@ class EauxDeMarseilleClient:
         ``JOURNEE``, ``SEMAINE``, ``TRIMESTRE``); availability per
         contract is reported by ``/Acces/autorisations``.
         """
-        start = int(datetime(year, 1, 1, tzinfo=UTC).timestamp())
-        end = int(datetime(year, 12, 31, 23, 59, 59, tzinfo=UTC).timestamp())
+        start = int(datetime(year, 1, 1, tzinfo=PORTAL_TZ).timestamp())
+        end = int(datetime(year, 12, 31, 23, 59, 59, tzinfo=PORTAL_TZ).timestamp())
         return (
             f"/Consommation/listeConsommationsInstanceAlerteChart/"
             f"{self._contract_id}/{start}/{end}/{granularity}/true"

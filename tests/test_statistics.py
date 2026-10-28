@@ -227,9 +227,8 @@ async def test_import_dedupes_year_boundary_day(
 ) -> None:
     """A day returned by two adjacent yearly windows is counted once.
 
-    The portal's UTC year window can return a Jan-1 reading (whose
-    +02:00 dateReleve is 22:00 UTC on Dec 31) in both years. Without
-    dedup the boundary day would be summed twice and inflate the total.
+    Two yearly windows can both return a Jan-1 reading. Without dedup
+    the boundary day would be summed twice and inflate the total.
     """
     boundary = {"dateReleve": "2026-01-01T00:00:00+02:00", "volumeConsoEnM3": 1.0}
 
@@ -255,6 +254,22 @@ async def test_import_dedupes_year_boundary_day(
     assert len(stats) == 3
     assert [s["state"] for s in stats] == [2.0, 1.0, 3.0]
     assert [s["sum"] for s in stats] == [2.0, 3.0, 6.0]
+
+
+@pytest.mark.usefixtures("new_year_in_paris")
+async def test_import_walks_up_to_the_portal_year(
+    hass: HomeAssistant,
+    mock_client: MagicMock,
+    mock_recorder,
+    mock_add_external_stats,
+) -> None:
+    """Just after midnight on 1 January in Paris (still 31 December in
+    UTC), the importer already fetches the new year."""
+    mock_client.fetch_monthly_range.return_value = []
+
+    await async_import_historical_statistics(hass, mock_client, MOCK_CONTRACT_ID)
+
+    assert mock_client.fetch_monthly_range.call_args_list[-1].args == (2027,)
 
 
 async def test_import_skips_entries_without_date(

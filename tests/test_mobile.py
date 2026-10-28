@@ -157,6 +157,30 @@ async def test_daily_range_walks_every_month(client: MobileClient) -> None:
     }
 
 
+@pytest.mark.usefixtures("new_year_in_paris")
+async def test_daily_range_stops_at_the_portal_month(client: MobileClient) -> None:
+    """Just after midnight on 1 January in Paris (still 31 December in
+    UTC), the new year is the current one: only January is walked."""
+    with aioresponses() as m:
+        m.post(_CONNECT_URL, payload=_connect_ok())
+        m.post(
+            f"{_BASE}/getListeReleves/",
+            payload={
+                "Code": 100,
+                "Result": {
+                    "Releves": [
+                        {"DateReleve": "01/01/2027", "ValeurIndex": "1000", "Consommation": 1.0}
+                    ]
+                },
+            },
+            repeat=True,
+        )
+
+        entries = await client.daily_range(2027)
+
+    assert len(entries) == 1
+
+
 async def test_reauthenticates_once_on_session_expiry(client: MobileClient) -> None:
     """A 401 on the data call triggers a transparent re-auth and retry."""
     with aioresponses() as m:

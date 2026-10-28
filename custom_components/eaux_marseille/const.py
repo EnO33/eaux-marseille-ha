@@ -8,7 +8,9 @@ service ever changes.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
+from zoneinfo import ZoneInfo
 
 # ---------------------------------------------------------------------
 # Home Assistant integration metadata
@@ -18,6 +20,16 @@ DOMAIN = "eaux_marseille"
 
 CONF_CONTRACT_ID = "contract_id"
 CONF_PROVIDER = "provider"
+
+# The portals and the mobility API date readings and bound years in
+# French local time, so "which year is it" must be answered there too.
+PORTAL_TZ = ZoneInfo("Europe/Paris")
+
+
+def portal_now() -> datetime:
+    """Return the current time in the portals' time zone."""
+    return datetime.now(PORTAL_TZ)
+
 
 # ---------------------------------------------------------------------
 # Customer portal endpoints
