@@ -64,7 +64,8 @@ class EauxDeMarseilleSensor(CoordinatorEntity[EauxDeMarseilleCoordinator], Senso
         self._attr_unique_id = f"{contract_id}_{description.key}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, contract_id)},
-            name=f"Eaux de Marseille — Contrat {contract_id}",
+            translation_key="contract",
+            translation_placeholders={"contract_id": contract_id},
             manufacturer=PROVIDER_MANUFACTURER[provider],
             model="Compteur télérelevé",
             configuration_url=PROVIDERS[provider].url,

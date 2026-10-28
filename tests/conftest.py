@@ -184,7 +184,7 @@ if HAS_HA:
         """Return a MockConfigEntry added to hass."""
         entry = MockConfigEntry(
             domain=DOMAIN,
-            title=f"Contrat {MOCK_CONTRACT_ID}",
+            title=f"SEM {MOCK_CONTRACT_ID}",
             data={
                 CONF_PROVIDER: "sem",
                 CONF_USERNAME: MOCK_USERNAME,

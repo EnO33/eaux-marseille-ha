@@ -76,7 +76,7 @@ async def test_user_flow_success(hass: HomeAssistant, mock_client: MagicMock) ->
         await hass.async_block_till_done()
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == f"Contrat {MOCK_CONTRACT_ID}"
+    assert result["title"] == f"SEM {MOCK_CONTRACT_ID}"
     assert result["data"] == MOCK_CONFIG_ENTRY_DATA
 
 
