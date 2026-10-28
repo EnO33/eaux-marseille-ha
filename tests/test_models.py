@@ -1,12 +1,15 @@
-"""Unit tests for ``ConsumptionData.from_api_responses``.
+"""Unit tests for ``ConsumptionData.from_api_responses`` and the context cookie.
 
-The builder is a pure function over the portal payloads, so these run
+Both are pure functions over the portal payloads, so these run
 without any HTTP mocking or a Home Assistant install.
 """
 
 from __future__ import annotations
 
-from custom_components.eaux_marseille.models import ConsumptionData
+import json
+import urllib.parse
+
+from custom_components.eaux_marseille.models import ConsumptionData, encode_context_cookie
 
 
 def test_last_reading_backfilled_from_history_when_dashboard_incomplete() -> None:
@@ -99,3 +102,80 @@ def test_reported_zeros_are_kept() -> None:
 
     assert data.current_year_m3 == 0.0
     assert data.daily_average_m3 == 0.0
+
+
+class TestEncodeContextCookie:
+    """Test that the AEL_CONTEXT cookie is built as valid JSON."""
+
+    def _decode(self, encoded: str) -> dict:
+        """Reverse the URL-encoding + JSON parse to inspect the payload."""
+        return json.loads(urllib.parse.unquote_plus(encoded))
+
+    def test_round_trip_simple(self) -> None:
+        """A trivial user roundtrips cleanly through JSON."""
+        encoded = encode_context_cookie(
+            contract={"numContrat": "1234567"},
+            user_info={
+                "identifiant": "user@example.com",
+                "nom": "Doe",
+                "prenom": "John",
+                "email": "user@example.com",
+                "titre": "M.",
+                "userWebId": 42,
+                "meta": {},
+                "profils": [],
+            },
+            ael_token="fake-token",
+        )
+        payload = self._decode(encoded)
+        assert payload["type"] == "contrat"
+        assert payload["object"] == {"numContrat": "1234567"}
+        assert payload["user"]["nomComplet"] == "John Doe"
+        assert payload["user"]["tokenAuthentique"] == "fake-token"
+
+    def test_apostrophe_in_name_preserved(self) -> None:
+        """An apostrophe in the user name doesn't corrupt the JSON."""
+        encoded = encode_context_cookie(
+            contract={"numContrat": "1234567"},
+            user_info={
+                "identifiant": "obrien@example.com",
+                "nom": "O'Brien",
+                "prenom": "Sean",
+                "email": "obrien@example.com",
+                "titre": "M.",
+                "userWebId": 1,
+                "meta": {},
+                "profils": [],
+            },
+            ael_token="fake-token",
+        )
+        # Must not raise: previously str(dict).replace("'", '"') would
+        # have produced invalid JSON for "O'Brien".
+        payload = self._decode(encoded)
+        assert payload["user"]["nom"] == "O'Brien"
+        assert payload["user"]["nomComplet"] == "Sean O'Brien"
+
+    def test_none_values_become_empty_strings(self) -> None:
+        """Explicit None values do not surface as the literal 'None' string."""
+        encoded = encode_context_cookie(
+            contract={"numContrat": "1234567"},
+            user_info={
+                "identifiant": "user@example.com",
+                "nom": None,
+                "prenom": None,
+                "email": None,
+                "titre": None,
+                "userWebId": None,
+                "meta": None,
+                "profils": None,
+            },
+            ael_token="fake-token",
+        )
+        payload = self._decode(encoded)
+        # The literal string "None" must not appear anywhere — that was
+        # the str(dict) bug.
+        assert "None" not in encoded
+        assert payload["user"]["nom"] == ""
+        assert payload["user"]["nomComplet"] == ""
+        assert payload["user"]["meta"] == {}
+        assert payload["user"]["profils"] == []

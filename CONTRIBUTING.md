@@ -18,7 +18,7 @@ Most of the test surface (HTTP client, retries, redirects, models, diagnostics) 
 
 ```bash
 pip install pytest pytest-asyncio pytest-cov aioresponses tenacity
-python -m pytest tests/test_api.py
+python -m pytest tests/api tests/test_mobile.py tests/test_models.py
 ```
 
 The `tests/conftest.py` stubs the `homeassistant.*` modules with `MagicMock` so the integration's source can be imported standalone. Tests that actually touch HA helpers are marked `@pytest.mark.ha_required` and **skipped** in this mode (you'll see `19 skipped`).
