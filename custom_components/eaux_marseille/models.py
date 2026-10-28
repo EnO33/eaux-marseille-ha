@@ -86,10 +86,15 @@ class ConsumptionData:
         # The monthly chart comes back chronological, so the last entry is
         # the current month.
         current_month = monthly_entries[-1] if monthly_entries else {}
-        year_total = round(
-            sum(entry.get("volumeConsoEnM3", 0.0) for entry in monthly_entries),
-            3,
-        )
+        # No monthly volume at all (fresh contract, soft-400) means unknown,
+        # not a real-looking 0 m³ that would also pollute the statistics.
+        month_volumes = [
+            volume
+            for entry in monthly_entries
+            if (volume := entry.get("volumeConsoEnM3")) is not None
+        ]
+        year_total = round(sum(month_volumes), 3) if month_volumes else None
+        daily_average = last_reading.get("moyenne")
 
         latest_daily = _latest_by_date(daily_entries or [])
         index_precise = _litres_to_m3(latest_daily.get("valeurIndex"))
@@ -107,7 +112,7 @@ class ConsumptionData:
             last_reading_litres=last_reading.get("volumeConsoEnLitres"),
             last_reading_date=_iso_date_prefix(last_reading.get("dateReleve")),
             last_reading_days=last_reading.get("nbJours"),
-            daily_average_m3=round(last_reading.get("moyenne") or 0.0, 4),
+            daily_average_m3=None if daily_average is None else round(daily_average, 4),
             previous_reading_m3=previous.get("volumeConsoEnM3"),
             previous_reading_date=_iso_date_prefix(previous.get("dateReleve")),
             current_month_m3=current_month.get("volumeConsoEnM3"),

@@ -604,7 +604,7 @@ class TestFreshContract:
         assert data.last_reading_m3 == 5.0
         # Monthly endpoint produced no data, so derived fields are empty.
         assert data.current_month_m3 is None
-        assert data.current_year_m3 == 0.0
+        assert data.current_year_m3 is None
         # History endpoint flowed through too.
         assert data.total_readings == 1
 
