@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.helpers.selector import (
     SelectSelector,
@@ -49,20 +49,28 @@ _TITLE_PREFIX = {
 # are not verified on a real contract.
 _CONTRACT_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,32}")
 
-STEP_USER_DATA_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_PROVIDER, default=DEFAULT_PROVIDER.value): _PROVIDER_SELECTOR,
-        vol.Required(CONF_USERNAME): str,
-        vol.Required(CONF_PASSWORD): str,
-        vol.Required(CONF_CONTRACT_ID): str,
-    }
-)
-
 STEP_REAUTH_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_PASSWORD): str,
     }
 )
+
+
+def _credentials_schema(current: Mapping[str, Any]) -> vol.Schema:
+    """Return the setup form, pre-filled with ``current`` (never the password)."""
+
+    def required(key: str, default: str | None = None) -> vol.Required:
+        value = current.get(key, default)
+        return vol.Required(key) if value is None else vol.Required(key, default=value)
+
+    return vol.Schema(
+        {
+            required(CONF_PROVIDER, DEFAULT_PROVIDER.value): _PROVIDER_SELECTOR,
+            required(CONF_USERNAME): str,
+            vol.Required(CONF_PASSWORD): str,
+            required(CONF_CONTRACT_ID): str,
+        }
+    )
 
 
 def _entry_title(provider: Provider, contract_id: str) -> str:
@@ -78,14 +86,10 @@ def _with_clean_contract(user_input: dict[str, Any]) -> dict[str, Any] | None:
     return {**user_input, CONF_CONTRACT_ID: contract_id}
 
 
-async def _validate_credentials(
-    *,
-    username: str,
-    password: str,
-    contract_id: str,
-    provider: Provider,
-) -> str | None:
+async def _validate_credentials(data: Mapping[str, Any]) -> str | None:
     """Authenticate against the portal and check the contract belongs to the account.
+
+    ``data`` has the shape of the config entry data.
 
     Returns:
         ``None`` on success, or one of ``"invalid_auth"`` / ``"invalid_contract"``
@@ -93,10 +97,10 @@ async def _validate_credentials(
         error reporting.
     """
     client = EauxDeMarseilleClient(
-        login=username,
-        password=password,
-        contract_id=contract_id,
-        provider=provider,
+        login=data[CONF_USERNAME],
+        password=data[CONF_PASSWORD],
+        contract_id=data[CONF_CONTRACT_ID],
+        provider=Provider(data.get(CONF_PROVIDER, DEFAULT_PROVIDER.value)),
     )
     try:
         await client.authenticate()
@@ -124,12 +128,6 @@ class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call
 
     VERSION = 1
 
-    _reauth_entry: ConfigEntry | None = None
-
-    # ------------------------------------------------------------------
-    # User flow (initial setup)
-    # ------------------------------------------------------------------
-
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
 
@@ -145,12 +143,7 @@ class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call
             await self.async_set_unique_id(f"{provider.value}_{user_input[CONF_CONTRACT_ID]}")
             self._abort_if_unique_id_configured()
 
-            error = await _validate_credentials(
-                username=user_input[CONF_USERNAME],
-                password=user_input[CONF_PASSWORD],
-                contract_id=user_input[CONF_CONTRACT_ID],
-                provider=provider,
-            )
+            error = await _validate_credentials(user_input)
             if error is None:
                 return self.async_create_entry(
                     title=_entry_title(provider, user_input[CONF_CONTRACT_ID]),
@@ -160,62 +153,36 @@ class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call
 
         return self.async_show_form(
             step_id="user",
-            data_schema=STEP_USER_DATA_SCHEMA,
+            data_schema=_credentials_schema({}),
             errors=errors,
         )
 
-    # ------------------------------------------------------------------
-    # Reauthentication flow (triggered by ConfigEntryAuthFailed)
-    # ------------------------------------------------------------------
-
     async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> ConfigFlowResult:
         """Start the reauth flow for an existing entry."""
-        self._reauth_entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Ask the user to re-enter the portal password."""
-        if self._reauth_entry is None:
-            # Defensive: HA always sets the entry_id in self.context before
-            # calling async_step_reauth, so this branch is unreachable in
-            # practice. We surface a clear error instead of using assert
-            # (which gets stripped under python -O).
-            raise RuntimeError("Reauth flow started without an entry context")
+        entry = self._get_reauth_entry()
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            error = await _validate_credentials(
-                username=self._reauth_entry.data[CONF_USERNAME],
-                password=user_input[CONF_PASSWORD],
-                contract_id=self._reauth_entry.data[CONF_CONTRACT_ID],
-                provider=Provider(
-                    self._reauth_entry.data.get(CONF_PROVIDER, DEFAULT_PROVIDER.value)
-                ),
-            )
+            data = {**entry.data, CONF_PASSWORD: user_input[CONF_PASSWORD]}
+            error = await _validate_credentials(data)
             if error is None:
-                return self.async_update_reload_and_abort(
-                    self._reauth_entry,
-                    data={
-                        **self._reauth_entry.data,
-                        CONF_PASSWORD: user_input[CONF_PASSWORD],
-                    },
-                )
+                return self.async_update_reload_and_abort(entry, data=data)
             errors["base"] = error
 
         return self.async_show_form(
             step_id="reauth_confirm",
             data_schema=STEP_REAUTH_DATA_SCHEMA,
             description_placeholders={
-                "username": self._reauth_entry.data[CONF_USERNAME],
+                "username": entry.data[CONF_USERNAME],
             },
             errors=errors,
         )
-
-    # ------------------------------------------------------------------
-    # Reconfiguration flow (Settings -> Devices -> [...] -> Reconfigure)
-    # ------------------------------------------------------------------
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
@@ -241,12 +208,7 @@ class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call
             await self.async_set_unique_id(f"{provider.value}_{user_input[CONF_CONTRACT_ID]}")
             self._abort_if_unique_id_mismatch(reason="reconfigure_unique_id_mismatch")
 
-            error = await _validate_credentials(
-                username=user_input[CONF_USERNAME],
-                password=user_input[CONF_PASSWORD],
-                contract_id=user_input[CONF_CONTRACT_ID],
-                provider=provider,
-            )
+            error = await _validate_credentials(user_input)
             if error is None:
                 return self.async_update_reload_and_abort(
                     entry,
@@ -257,20 +219,8 @@ class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call
 
         # Pre-fill the form with the current values so the user only
         # edits what they want to change.
-        current = entry.data
-        schema = vol.Schema(
-            {
-                vol.Required(
-                    CONF_PROVIDER,
-                    default=current.get(CONF_PROVIDER, DEFAULT_PROVIDER.value),
-                ): _PROVIDER_SELECTOR,
-                vol.Required(CONF_USERNAME, default=current[CONF_USERNAME]): str,
-                vol.Required(CONF_PASSWORD): str,
-                vol.Required(CONF_CONTRACT_ID, default=current[CONF_CONTRACT_ID]): str,
-            }
-        )
         return self.async_show_form(
             step_id="reconfigure",
-            data_schema=schema,
+            data_schema=_credentials_schema(entry.data),
             errors=errors,
         )
