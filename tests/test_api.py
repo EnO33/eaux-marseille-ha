@@ -116,14 +116,14 @@ class TestAuthentication:
         await client.authenticate()
 
     async def test_authenticate_token_failure(self, client: EauxDeMarseilleClient) -> None:
-        """Authentication raises on token generation failure."""
+        """A 5xx on token generation is an outage, not a credentials problem."""
         with aioresponses() as m:
             m.get(_PORTAL_URL + "/", body="<html></html>")
             m.post(f"{_API_BASE}/Acces/generateToken", status=500)
             m.post(f"{_API_BASE}/Acces/generateToken", status=500)
             m.post(f"{_API_BASE}/Acces/generateToken", status=500)
 
-            with pytest.raises(EauxDeMarseilleAuthError, match="Token generation failed"):
+            with pytest.raises(EauxDeMarseilleApiError, match="Token generation failed"):
                 await client.authenticate()
 
     async def test_authenticate_login_failure(self, client: EauxDeMarseilleClient) -> None:
@@ -141,6 +141,63 @@ class TestAuthentication:
 
             with pytest.raises(EauxDeMarseilleAuthError, match="Login failed"):
                 await client.authenticate()
+
+    @pytest.mark.parametrize("status", [400, 404])
+    async def test_authenticate_login_4xx_is_auth_error(
+        self, client: EauxDeMarseilleClient, status: int
+    ) -> None:
+        """Any 4xx on the login POST means the portal rejected the credentials."""
+        with aioresponses() as m:
+            m.get(_PORTAL_URL + "/", body="<html></html>")
+            m.post(f"{_API_BASE}/Acces/generateToken", payload={"token": "fake-temp-token"})
+            m.post(f"{_API_BASE}/Utilisateur/authentification", status=status)
+
+            with pytest.raises(EauxDeMarseilleAuthError, match="Login failed"):
+                await client.authenticate()
+
+    async def test_authenticate_login_outage_is_api_error(
+        self, client: EauxDeMarseilleClient
+    ) -> None:
+        """A 503 on the login POST after retries must not trigger a reauth."""
+        with aioresponses() as m:
+            m.get(_PORTAL_URL + "/", body="<html></html>")
+            m.post(f"{_API_BASE}/Acces/generateToken", payload={"token": "fake-temp-token"})
+            for _ in range(3):
+                m.post(f"{_API_BASE}/Utilisateur/authentification", status=503)
+
+            with pytest.raises(EauxDeMarseilleApiError, match="Login failed") as excinfo:
+                await client.authenticate()
+            assert not isinstance(excinfo.value, EauxDeMarseilleAuthError)
+
+    async def test_authenticate_login_timeout_is_api_error(
+        self, client: EauxDeMarseilleClient
+    ) -> None:
+        """A timeout on the login POST is an outage, not a credentials problem."""
+        with aioresponses() as m:
+            m.get(_PORTAL_URL + "/", body="<html></html>")
+            m.post(f"{_API_BASE}/Acces/generateToken", payload={"token": "fake-temp-token"})
+            for _ in range(3):
+                m.post(f"{_API_BASE}/Utilisateur/authentification", exception=TimeoutError())
+
+            with pytest.raises(EauxDeMarseilleApiError, match="Login failed"):
+                await client.authenticate()
+
+    async def test_authenticate_contract_rejected_is_api_error(
+        self, client: EauxDeMarseilleClient
+    ) -> None:
+        """A 4xx after a successful login is not a credentials rejection."""
+        with aioresponses() as m:
+            m.get(_PORTAL_URL + "/", body="<html></html>")
+            m.post(f"{_API_BASE}/Acces/generateToken", payload={"token": "fake-temp-token"})
+            m.post(
+                f"{_API_BASE}/Utilisateur/authentification",
+                payload={"tokenAuthentique": "fake-ael-token", "utilisateurInfo": {}},
+            )
+            m.get(f"{_API_BASE}/Abonnement/getContratParDefaut/", status=403)
+
+            with pytest.raises(EauxDeMarseilleApiError) as excinfo:
+                await client.authenticate()
+            assert not isinstance(excinfo.value, EauxDeMarseilleAuthError)
 
     async def test_authenticate_follows_307_redirect(self, client: EauxDeMarseilleClient) -> None:
         """Authentication follows a 307 redirect on the login POST and preserves the body."""
@@ -195,7 +252,7 @@ class TestAuthentication:
                 body="redirect without location",
             )
 
-            with pytest.raises(EauxDeMarseilleAuthError, match="no Location header"):
+            with pytest.raises(EauxDeMarseilleApiError, match="no Location header"):
                 await client.authenticate()
 
     async def test_authenticate_rejects_cross_origin_redirect(
@@ -217,7 +274,7 @@ class TestAuthentication:
                 headers={"Location": "https://attacker.example/steal"},
             )
 
-            with pytest.raises(EauxDeMarseilleAuthError, match="off-portal host"):
+            with pytest.raises(EauxDeMarseilleApiError, match="off-portal host"):
                 await client.authenticate()
 
     async def test_authenticate_rejects_protocol_relative_redirect(
@@ -236,7 +293,7 @@ class TestAuthentication:
                 headers={"Location": "//attacker.example/steal"},
             )
 
-            with pytest.raises(EauxDeMarseilleAuthError, match="off-portal host"):
+            with pytest.raises(EauxDeMarseilleApiError, match="off-portal host"):
                 await client.authenticate()
 
     async def test_authenticate_rejects_https_to_http_downgrade(
@@ -255,7 +312,7 @@ class TestAuthentication:
                 headers={"Location": "http://espaceclients.eauxdemarseille.fr/x"},
             )
 
-            with pytest.raises(EauxDeMarseilleAuthError, match="non-HTTPS scheme"):
+            with pytest.raises(EauxDeMarseilleApiError, match="non-HTTPS scheme"):
                 await client.authenticate()
 
     async def test_authenticate_landing_page_failure(self, client: EauxDeMarseilleClient) -> None:
@@ -300,7 +357,7 @@ class TestAuthentication:
     async def test_authenticate_token_response_missing_field(
         self, client: EauxDeMarseilleClient
     ) -> None:
-        """A 200 with no 'token' field surfaces a clear auth error."""
+        """A 200 with no 'token' field is an API drift, not a credentials problem."""
         with aioresponses() as m:
             m.get(_PORTAL_URL + "/", body="<html></html>")
             m.post(
@@ -308,7 +365,7 @@ class TestAuthentication:
                 payload={"unexpected": "shape"},
             )
 
-            with pytest.raises(EauxDeMarseilleAuthError, match="missing 'token'"):
+            with pytest.raises(EauxDeMarseilleApiError, match="missing 'token'"):
                 await client.authenticate()
 
     async def test_authenticate_login_response_missing_field(
@@ -348,7 +405,7 @@ class TestRedirects:
                     headers={"Location": f"{_API_BASE}/Acces/generateToken/h{i + 1}"},
                 )
 
-            with pytest.raises(EauxDeMarseilleAuthError, match="Too many redirects"):
+            with pytest.raises(EauxDeMarseilleApiError, match="Too many redirects"):
                 await client.authenticate()
 
     async def test_post_to_get_redirect_drops_body(self, client: EauxDeMarseilleClient) -> None:
@@ -392,7 +449,7 @@ class TestJSONErrors:
                 content_type="text/html",
             )
 
-            with pytest.raises(EauxDeMarseilleAuthError) as excinfo:
+            with pytest.raises(EauxDeMarseilleApiError) as excinfo:
                 await client.authenticate()
             assert "Expected JSON" in str(excinfo.value) or "unexpected response" in str(
                 excinfo.value

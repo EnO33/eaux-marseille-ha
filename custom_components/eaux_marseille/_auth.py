@@ -209,6 +209,7 @@ class PortalAuth:
             json_payload={"identifiant": self._login, "motDePasse": self._password},
             require_field="tokenAuthentique",
             error_prefix="Login failed",
+            checks_credentials=True,
         )
         ael_token: str = data["tokenAuthentique"]
         user_info: dict[str, Any] = data["utilisateurInfo"]
@@ -265,8 +266,17 @@ class PortalAuth:
         extra_headers: dict[str, str] | None = None,
         require_field: str | None = None,
         error_prefix: str = "Request failed",
+        checks_credentials: bool = False,
     ) -> dict[str, Any]:
-        """API call mapped to :class:`EauxDeMarseilleAuthError` on failure."""
+        """API call with failures prefixed by ``error_prefix``.
+
+        Only a call that ``checks_credentials`` can raise
+        :class:`EauxDeMarseilleAuthError`, and only when the portal rejects
+        the credentials: a 4xx, or a 200 without ``require_field``. Transport
+        errors, 5xx after retries and non-JSON bodies stay
+        :class:`EauxDeMarseilleApiError` so an outage is retried instead of
+        prompting the user for a password that is still correct.
+        """
         try:
             data = await _http.request_with_retry(
                 self._session,
@@ -278,10 +288,11 @@ class PortalAuth:
                 json=json_payload,
             )
         except EauxDeMarseilleApiError as err:
-            raise EauxDeMarseilleAuthError(f"{error_prefix}: {err}") from err
+            if checks_credentials and err.status is not None and 400 <= err.status < 500:
+                raise EauxDeMarseilleAuthError(f"{error_prefix}: {err}") from err
+            raise EauxDeMarseilleApiError(f"{error_prefix}: {err}") from err
 
         if require_field and (not data or require_field not in data):
-            raise EauxDeMarseilleAuthError(
-                f"{error_prefix}: missing {require_field!r}; got: {sorted(data)}"
-            )
+            error = EauxDeMarseilleAuthError if checks_credentials else EauxDeMarseilleApiError
+            raise error(f"{error_prefix}: missing {require_field!r}; got: {sorted(data)}")
         return data

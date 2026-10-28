@@ -154,15 +154,21 @@ async def _raise_for_status(response: aiohttp.ClientResponse, url: str) -> None:
     """
     if response.status in (401, 403):
         text = await response.text()
-        raise EauxDeMarseilleSessionExpiredError(f"HTTP {response.status} at {url}: {text[:200]}")
+        raise EauxDeMarseilleSessionExpiredError(
+            f"HTTP {response.status} at {url}: {text[:200]}", status=response.status
+        )
     if response.status == 400:
         text = await response.text()
         if _is_soft_no_data(text):
-            raise EauxDeMarseilleNoDataError(f"HTTP 400 at {url} (no data yet): {text[:200]}")
-        raise EauxDeMarseilleApiError(f"HTTP 400 at {url}: {text[:200]}")
+            raise EauxDeMarseilleNoDataError(
+                f"HTTP 400 at {url} (no data yet): {text[:200]}", status=400
+            )
+        raise EauxDeMarseilleApiError(f"HTTP 400 at {url}: {text[:200]}", status=400)
     if 400 <= response.status < 500:
         text = await response.text()
-        raise EauxDeMarseilleApiError(f"HTTP {response.status} at {url}: {text[:200]}")
+        raise EauxDeMarseilleApiError(
+            f"HTTP {response.status} at {url}: {text[:200]}", status=response.status
+        )
     if response.status >= 500:
         text = await response.text()
         raise aiohttp.ClientResponseError(
