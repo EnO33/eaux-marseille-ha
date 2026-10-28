@@ -144,6 +144,7 @@ def mock_client() -> MagicMock:
     """Return a mocked EauxDeMarseilleClient with async methods."""
     client = MagicMock(spec=EauxDeMarseilleClient)
     client.authenticate = AsyncMock(return_value=None)
+    client.check_contract = AsyncMock(return_value=None)
     client.fetch = AsyncMock(return_value=MOCK_CONSUMPTION)
     client.fetch_monthly_range = AsyncMock(return_value=MOCK_MONTHLY_ENTRIES)
     client.fetch_daily_range = AsyncMock(return_value=[])

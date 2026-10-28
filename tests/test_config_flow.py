@@ -17,6 +17,7 @@ from homeassistant.data_entry_flow import FlowResultType, InvalidData
 from custom_components.eaux_marseille.api import (
     EauxDeMarseilleApiError,
     EauxDeMarseilleAuthError,
+    EauxDeMarseilleContractError,
 )
 from custom_components.eaux_marseille.const import CONF_PROVIDER, DOMAIN
 
@@ -117,6 +118,25 @@ async def test_user_flow_cannot_connect(hass: HomeAssistant, mock_client: MagicM
     assert result["errors"] == {"base": "cannot_connect"}
 
 
+async def test_user_flow_invalid_contract(hass: HomeAssistant, mock_client: MagicMock) -> None:
+    """A contract number outside the account is rejected before the entry exists."""
+    mock_client.check_contract.side_effect = EauxDeMarseilleContractError("HTTP 404")
+
+    with patch(
+        "custom_components.eaux_marseille.config_flow.EauxDeMarseilleClient",
+        return_value=mock_client,
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input=MOCK_CONFIG_ENTRY_DATA
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "invalid_contract"}
+
+
 async def test_user_flow_duplicate(
     hass: HomeAssistant, mock_client: MagicMock, mock_config_entry
 ) -> None:
@@ -199,6 +219,45 @@ async def test_reauth_flow_cannot_connect(
 
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": "cannot_connect"}
+
+
+async def test_reauth_flow_invalid_contract(
+    hass: HomeAssistant, mock_client: MagicMock, mock_config_entry
+) -> None:
+    """Reauth reports a contract the account no longer holds."""
+    mock_client.check_contract.side_effect = EauxDeMarseilleContractError("HTTP 404")
+
+    with patch(
+        "custom_components.eaux_marseille.config_flow.EauxDeMarseilleClient",
+        return_value=mock_client,
+    ):
+        result = await mock_config_entry.start_reauth_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input={CONF_PASSWORD: "any"}
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "invalid_contract"}
+
+
+async def test_reconfigure_flow_invalid_contract(
+    hass: HomeAssistant, mock_client: MagicMock, mock_config_entry
+) -> None:
+    """Reconfigure keeps the form open on a contract outside the account."""
+    mock_client.check_contract.side_effect = EauxDeMarseilleContractError("HTTP 404")
+
+    with patch(
+        "custom_components.eaux_marseille.config_flow.EauxDeMarseilleClient",
+        return_value=mock_client,
+    ):
+        result = await mock_config_entry.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input=MOCK_CONFIG_ENTRY_DATA
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "reconfigure"
+    assert result["errors"] == {"base": "invalid_contract"}
 
 
 async def test_user_flow_rejects_unknown_provider(hass: HomeAssistant) -> None:

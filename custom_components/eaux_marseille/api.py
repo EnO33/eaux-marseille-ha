@@ -32,6 +32,7 @@ from .const import (
 from .exceptions import (
     EauxDeMarseilleApiError,
     EauxDeMarseilleAuthError,
+    EauxDeMarseilleContractError,
     EauxDeMarseilleError,
     EauxDeMarseilleNoDataError,
     EauxDeMarseilleSessionExpiredError,
@@ -44,6 +45,7 @@ __all__ = [
     "EauxDeMarseilleApiError",
     "EauxDeMarseilleAuthError",
     "EauxDeMarseilleClient",
+    "EauxDeMarseilleContractError",
     "EauxDeMarseilleError",
     "EauxDeMarseilleNoDataError",
     "EauxDeMarseilleSessionExpiredError",
@@ -141,6 +143,23 @@ class EauxDeMarseilleClient:
         """
         await self._guard.ensure()
 
+    async def check_contract(self) -> None:
+        """Raise :class:`EauxDeMarseilleContractError` if the contract is not the account's.
+
+        The portal rejects a contract outside the account with a 4xx (404
+        observed on SEM). A fresh contract's soft 400 ("no data yet") is
+        tolerated by :meth:`_safe_get` and counts as valid; 5xx and
+        transport errors stay :class:`EauxDeMarseilleApiError`.
+        """
+        try:
+            await self._guard.run(lambda: self._safe_get(self._last_billed_path))
+        except EauxDeMarseilleApiError as err:
+            if err.status is not None and 400 <= err.status < 500:
+                raise EauxDeMarseilleContractError(
+                    f"Contract not found on this account (HTTP {err.status})"
+                ) from err
+            raise
+
     async def fetch(self) -> ConsumptionData:
         """Fetch the three consumption endpoints and aggregate the result.
 
@@ -171,9 +190,7 @@ class EauxDeMarseilleClient:
         return entries
 
     async def _fetch_inner(self) -> ConsumptionData:
-        last = await self._safe_get(
-            f"/TableauDeBord/derniereConsommationFacturee/{self._contract_id}"
-        )
+        last = await self._safe_get(self._last_billed_path)
         year = portal_now().year
         monthly = await self._safe_get(self._chart_path(year, "MOIS"))
         history = await self._safe_get(
@@ -264,6 +281,10 @@ class EauxDeMarseilleClient:
                 err,
             )
             return {}
+
+    @property
+    def _last_billed_path(self) -> str:
+        return f"/TableauDeBord/derniereConsommationFacturee/{self._contract_id}"
 
     def _chart_path(self, year: int, granularity: str) -> str:
         """Build the consumption-chart endpoint path for ``year``.
