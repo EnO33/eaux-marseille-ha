@@ -12,14 +12,14 @@ The auth flow lives in :mod:`._auth`, the HTTP transport in
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Any, TypeVar
+from typing import Any
 
 import aiohttp
 
 from ._auth import PortalAuth
 from ._mobile import MobileClient
+from ._session import SessionGuard
 from .const import (
     DEFAULT_PROVIDER,
     MOBILE_ENDPOINTS,
@@ -49,7 +49,6 @@ __all__ = [
 ]
 
 _LOGGER = logging.getLogger(__name__)
-_T = TypeVar("_T")
 
 
 class EauxDeMarseilleClient:
@@ -101,6 +100,12 @@ class EauxDeMarseilleClient:
             login=login,
             password=password,
         )
+        self._guard = SessionGuard(
+            "Portal",
+            is_authenticated=lambda: self._auth.is_authenticated,
+            authenticate=self._auth.authenticate,
+            invalidate=self._auth.invalidate,
+        )
         # The mobility API (phone-app backend) exposes daily readings the
         # web portal keeps monthly-only. Used only as a daily fallback, and
         # only for providers whose mobility config is known.
@@ -132,9 +137,7 @@ class EauxDeMarseilleClient:
         ``self._auth.invalidate()`` first or just let
         :meth:`fetch` recover from the inevitable 401.
         """
-        if self._auth.is_authenticated:
-            return
-        await self._auth.authenticate()
+        await self._guard.ensure()
 
     async def fetch(self) -> ConsumptionData:
         """Fetch the three consumption endpoints and aggregate the result.
@@ -144,11 +147,11 @@ class EauxDeMarseilleClient:
         (token expired). Net effect: 3 requests/poll in the steady state
         instead of 5 auth + 3 fetch.
         """
-        return await self._with_session_recovery(self._fetch_inner)
+        return await self._guard.run(self._fetch_inner)
 
     async def fetch_monthly_range(self, year: int) -> list[dict[str, Any]]:
         """Return the raw monthly consumption entries for ``year``."""
-        return await self._with_session_recovery(lambda: self._chart_entries(year, "MOIS"))
+        return await self._guard.run(lambda: self._chart_entries(year, "MOIS"))
 
     async def fetch_daily_range(self, year: int) -> list[dict[str, Any]]:
         """Return the raw daily consumption entries for ``year``.
@@ -158,9 +161,7 @@ class EauxDeMarseilleClient:
         exposes daily readings even for monthly-only web contracts). The
         fetch is tolerant throughout, so callers never break.
         """
-        entries = await self._with_session_recovery(
-            lambda: self._chart_entries(year, "JOURNEE", optional=True)
-        )
+        entries = await self._guard.run(lambda: self._chart_entries(year, "JOURNEE", optional=True))
         # The mobility API only carries recent history, so older years stay
         # web-only to avoid pointless month-by-month requests.
         if (
@@ -224,7 +225,7 @@ class EauxDeMarseilleClient:
         expiry is swallowed at DEBUG and an empty list returned — a
         monthly-only contract gets that 400 on *every* poll, so it's the
         normal case, not an anomaly worth an INFO line each time. Session
-        expiries are re-raised so :meth:`_with_session_recovery` can
+        expiries are re-raised so :meth:`.SessionGuard.run` can
         re-authenticate and retry.
         """
         path = self._chart_path(year, granularity)
@@ -265,28 +266,6 @@ class EauxDeMarseilleClient:
                 err,
             )
             return {}
-
-    async def _with_session_recovery(
-        self,
-        action: Callable[[], Awaitable[_T]],
-    ) -> _T:
-        """Run ``action`` under a guaranteed portal session.
-
-        * Authenticates first if no AEL token is cached.
-        * On :class:`EauxDeMarseilleSessionExpiredError`, invalidates the
-          cache, re-authenticates once, and retries the action.
-        * Any other error (auth failure, transport, 5xx after retries)
-          propagates unchanged.
-        """
-        if not self._auth.is_authenticated:
-            await self._auth.authenticate()
-        try:
-            return await action()
-        except EauxDeMarseilleSessionExpiredError as err:
-            _LOGGER.info("Portal session expired (%s); re-authenticating", err)
-            self._auth.invalidate()
-            await self._auth.authenticate()
-            return await action()
 
     def _chart_path(self, year: int, granularity: str) -> str:
         """Build the consumption-chart endpoint path for ``year``.
