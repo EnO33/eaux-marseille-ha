@@ -120,7 +120,9 @@ class MobileClient:
             "refreshToken": "",
         }
         try:
-            data = await self._request("POST", "/connect", body=body, authed=False)
+            # Credentials are sent once: a replayed login may count against the
+            # account lockout.
+            data = await self._request("POST", "/connect", body=body, authed=False, retry=False)
         except EauxDeMarseilleApiError as err:
             # A failed /connect is an auth problem from the caller's point of
             # view (bad credentials, or the mobility API rejecting the login).
@@ -137,6 +139,7 @@ class MobileClient:
         *,
         body: dict[str, Any] | None = None,
         authed: bool = True,
+        retry: bool = True,
     ) -> dict[str, Any]:
         headers = {
             "Accept": "application/json",
@@ -155,6 +158,7 @@ class MobileClient:
             timeout=self._timeout,
             headers=headers,
             allowed_host=self._endpoints.host,
+            retry=retry,
             **kwargs,
         )
         code = data.get("Code")

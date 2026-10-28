@@ -114,6 +114,15 @@ async def test_connect_error_maps_to_auth_error(client: MobileClient) -> None:
             await client.recent_daily()
 
 
+async def test_connect_server_error_is_not_retried(client: MobileClient) -> None:
+    """A 5xx on /connect is sent once: a replayed login may trip the lockout."""
+    with aioresponses() as m:
+        m.post(_CONNECT_URL, status=503, repeat=True)
+        with pytest.raises(EauxDeMarseilleAuthError):
+            await client.recent_daily()
+        assert sum(len(calls) for calls in m.requests.values()) == 1
+
+
 async def test_data_code_error_raises_api_error(client: MobileClient) -> None:
     """A non-100 Code on a data endpoint surfaces as an API error."""
     with aioresponses() as m:
