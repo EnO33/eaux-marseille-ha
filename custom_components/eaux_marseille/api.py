@@ -12,6 +12,7 @@ The auth flow lives in :mod:`._auth`, the HTTP transport in
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 from typing import Any
 
@@ -54,6 +55,8 @@ __all__ = [
 
 _LOGGER = logging.getLogger(__name__)
 
+_REDACTED = "**REDACTED**"
+
 
 class EauxDeMarseilleClient:
     """Async client for the Eaux de Marseille / SEMM customer portal API.
@@ -78,6 +81,8 @@ class EauxDeMarseilleClient:
         provider: Provider = DEFAULT_PROVIDER,
     ) -> None:
         self._contract_id = contract_id
+        # Kept only to scrub them from messages bound for the HA log.
+        self._identifiers = (contract_id, login)
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._owns_session = session is None
         # We deliberately use ThreadedResolver (socket.getaddrinfo via NSS)
@@ -131,6 +136,18 @@ class EauxDeMarseilleClient:
         """Close the underlying session if we own it."""
         if self._owns_session and not self._session.closed:
             await self._session.close()
+
+    def redact(self, text: str) -> str:
+        """Return ``text`` with this client's contract number and login hidden.
+
+        Error messages embed request URLs (which carry the contract number)
+        and users paste their logs in public issues: every message bound
+        for the Home Assistant log or the diagnostics goes through here.
+        """
+        for identifier in self._identifiers:
+            if identifier:
+                text = re.sub(re.escape(identifier), _REDACTED, text, flags=re.IGNORECASE)
+        return text
 
     async def authenticate(self) -> None:
         """Ensure a portal session is established.
@@ -276,9 +293,7 @@ class EauxDeMarseilleClient:
             return await self._auth.get(path)
         except EauxDeMarseilleNoDataError as err:
             _LOGGER.info(
-                "Portal returned no data for %s (likely a fresh contract): %s",
-                path,
-                err,
+                "Portal returned no data (likely a fresh contract): %s", self.redact(str(err))
             )
             return {}
 

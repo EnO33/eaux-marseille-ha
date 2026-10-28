@@ -65,9 +65,9 @@ async def async_import_historical_statistics(
         instance = get_instance(hass)
         await instance.async_db_ready
 
-        _LOGGER.debug("Starting statistics (re)import for contract %s", contract_id)
+        _LOGGER.debug("Starting statistics (re)import")
 
-        stats = await _collect_series(client.fetch_monthly_range)
+        stats = await _collect_series(client.fetch_monthly_range, client.redact)
         if stats:
             statistic_id = f"{DOMAIN}:monthly_consumption_{contract_id}"
             async_add_external_statistics(
@@ -76,23 +76,19 @@ async def async_import_historical_statistics(
                 stats,
             )
             _LOGGER.info(
-                "Imported %d monthly statistics for contract %s (total sum: %s m³)",
+                "Imported %d monthly statistics (total sum: %s m³)",
                 len(stats),
-                contract_id,
                 stats[-1]["sum"],
             )
         else:
-            _LOGGER.debug(
-                "No monthly statistics available to import for contract %s",
-                contract_id,
-            )
+            _LOGGER.debug("No monthly statistics available to import")
 
         # Contracts whose meter exposes daily telemetry (JOURNEE
         # granularity) also get a daily statistic. There's no upfront
         # probe: ``fetch_daily_range`` is tolerant and returns an empty
         # list for contracts without it, so a monthly-only contract just
         # yields no daily series and we skip the import.
-        daily_stats = await _collect_series(client.fetch_daily_range)
+        daily_stats = await _collect_series(client.fetch_daily_range, client.redact)
         if daily_stats:
             statistic_id = f"{DOMAIN}:daily_consumption_{contract_id}"
             async_add_external_statistics(
@@ -101,18 +97,17 @@ async def async_import_historical_statistics(
                 daily_stats,
             )
             _LOGGER.info(
-                "Imported %d daily statistics for contract %s (total sum: %s m³)",
+                "Imported %d daily statistics (total sum: %s m³)",
                 len(daily_stats),
-                contract_id,
                 daily_stats[-1]["sum"],
             )
         else:
-            _LOGGER.debug(
-                "No daily telemetry to import for contract %s",
-                contract_id,
-            )
-    except Exception:
-        _LOGGER.exception("Error during historical statistics import")
+            _LOGGER.debug("No daily telemetry to import")
+    except Exception as err:
+        # No traceback: the chained errors would print the contract number.
+        _LOGGER.error(  # noqa: TRY400
+            "Error during historical statistics import: %s", client.redact(repr(err))
+        )
         ir.async_create_issue(
             hass,
             DOMAIN,
@@ -130,6 +125,7 @@ async def async_import_historical_statistics(
 
 async def _collect_series(
     fetch_range: Callable[[int], Awaitable[list[dict[str, Any]]]],
+    redact: Callable[[str], str],
 ) -> list[StatisticData]:
     """Fetch every entry from ``_START_YEAR`` to now and build the series.
 
@@ -158,7 +154,7 @@ async def _collect_series(
         try:
             entries = await fetch_range(year)
         except Exception as err:
-            _LOGGER.warning("Could not fetch history for %d: %s", year, err)
+            _LOGGER.warning("Could not fetch history for %d: %s", year, redact(str(err)))
             continue
         _LOGGER.debug("Year %d: fetched %d entries", year, len(entries))
 

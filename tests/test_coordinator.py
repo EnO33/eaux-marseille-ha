@@ -18,7 +18,7 @@ from custom_components.eaux_marseille.api import (
 from custom_components.eaux_marseille.const import DOMAIN
 from custom_components.eaux_marseille.coordinator import EauxDeMarseilleCoordinator
 
-from .conftest import MOCK_CONSUMPTION
+from .conftest import MOCK_CONSUMPTION, MOCK_CONTRACT_ID
 
 pytestmark = pytest.mark.ha_required
 
@@ -66,3 +66,21 @@ async def test_coordinator_api_error(hass: HomeAssistant, mock_client: MagicMock
     assert coordinator.last_exception.translation_domain == DOMAIN
     assert coordinator.last_exception.translation_key == "update_failed"
     assert coordinator.last_exception.translation_placeholders == {"error": "portal 500"}
+
+
+async def test_coordinator_error_hides_contract(
+    hass: HomeAssistant, mock_client: MagicMock
+) -> None:
+    """The UpdateFailed message, logged by Home Assistant, carries no contract number (#85)."""
+    mock_client.fetch.side_effect = EauxDeMarseilleApiError(
+        f"HTTP 500 at https://portal.example/TableauDeBord/{MOCK_CONTRACT_ID}"
+    )
+
+    coordinator = EauxDeMarseilleCoordinator(hass, mock_client)
+    await coordinator.async_refresh()
+
+    assert coordinator.last_exception is not None
+    assert coordinator.last_exception.translation_placeholders is not None
+    error = coordinator.last_exception.translation_placeholders["error"]
+    assert MOCK_CONTRACT_ID not in error
+    assert "**REDACTED**" in error

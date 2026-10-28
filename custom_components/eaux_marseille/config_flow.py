@@ -69,13 +69,14 @@ async def _validate_credentials(
         await client.authenticate()
         await client.check_contract()
     except EauxDeMarseilleAuthError as err:
-        _LOGGER.warning("Authentication failed: %s", err)
+        _LOGGER.warning("Authentication failed: %s", client.redact(str(err)))
         return "invalid_auth"
     except EauxDeMarseilleContractError as err:
-        _LOGGER.warning("Contract check failed: %s", err)
+        _LOGGER.warning("Contract check failed: %s", client.redact(str(err)))
         return "invalid_contract"
-    except EauxDeMarseilleApiError:
-        _LOGGER.exception("API error during setup")
+    except EauxDeMarseilleApiError as err:
+        # No traceback: the chained errors would print the contract number.
+        _LOGGER.error("API error during setup: %s", client.redact(str(err)))  # noqa: TRY400
         return "cannot_connect"
     except Exception:
         _LOGGER.exception("Unexpected error during authentication")
