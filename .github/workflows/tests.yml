@@ -55,17 +55,18 @@ jobs:
       - name: Duplication (pylint)
         run: python -m pylint custom_components/eaux_marseille --disable=all --enable=duplicate-code --score=n
 
-  # Typecheck and Pytest run against two Home Assistant channels: the
-  # latest stable release and the latest release overall (a beta during
-  # HA's beta week). The stable leg keeps the historical job names, which
-  # branch protection requires. See .github/scripts/phacc_version.py.
+  # Typecheck and Pytest run against three Home Assistant channels: the
+  # latest stable release, the latest release overall (a beta during HA's
+  # beta week) and the minimum version declared in hacs.json. The stable
+  # leg keeps the historical job names, which branch protection requires.
+  # See .github/scripts/phacc_version.py.
   typecheck:
-    name: Typecheck (mypy strict)${{ matrix.ha == 'latest' && ' - HA latest' || '' }}
+    name: Typecheck (mypy strict)${{ matrix.ha != 'stable' && format(' - HA {0}', matrix.ha) || '' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        ha: [stable, latest]
+        ha: [stable, latest, minimum]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -81,12 +82,12 @@ jobs:
         run: python -m mypy custom_components/eaux_marseille/
 
   test:
-    name: Pytest${{ matrix.ha == 'latest' && ' - HA latest' || '' }}
+    name: Pytest${{ matrix.ha != 'stable' && format(' - HA {0}', matrix.ha) || '' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        ha: [stable, latest]
+        ha: [stable, latest, minimum]
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
