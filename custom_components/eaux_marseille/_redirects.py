@@ -26,7 +26,7 @@ from .exceptions import EauxDeMarseilleApiError
 _LOGGER = logging.getLogger(__name__)
 
 
-async def resolve(
+def resolve(
     response: aiohttp.ClientResponse,
     method: str,
     url: str,
@@ -45,7 +45,7 @@ async def resolve(
     off-portal, downgrades scheme, has no ``Location`` header, or if
     we've exceeded :data:`MAX_REDIRECTS` hops.
     """
-    next_url = await _validated_target(response, url, allowed_host)
+    next_url = _validated_target(response, url, allowed_host)
 
     _LOGGER.info(
         "Following HTTP %d redirect: %s → %s",
@@ -81,7 +81,7 @@ def drop_body_after_get_redirect(
     return pruned
 
 
-async def _validated_target(
+def _validated_target(
     response: aiohttp.ClientResponse,
     url: str,
     allowed_host: str,
@@ -89,11 +89,7 @@ async def _validated_target(
     """Compute and validate the absolute target URL of a 3xx response."""
     location = response.headers.get("Location")
     if not location:
-        body = await response.text()
-        raise EauxDeMarseilleApiError(
-            f"HTTP {response.status} at {url} with no Location header. "
-            f"Body starts with: {body[:200]!r}"
-        )
+        raise EauxDeMarseilleApiError(f"HTTP {response.status} at {url} with no Location header")
     target = URL(url).join(URL(location))
     # Hostnames are case-insensitive (RFC 3986 §3.2.2). yarl already
     # normalises to lowercase today, but lowering both sides explicitly

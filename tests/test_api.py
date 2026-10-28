@@ -32,7 +32,6 @@ from custom_components.eaux_marseille.const import (
     Provider,
     portal_now,
 )
-from custom_components.eaux_marseille.diagnostics import _scrub_exception
 from custom_components.eaux_marseille.models import encode_context_cookie
 
 # The default provider used by EauxDeMarseilleClient when constructed
@@ -1263,25 +1262,42 @@ class TestEncodeContextCookie:
         assert payload["user"]["profils"] == []
 
 
-class TestDiagnosticsScrub:
-    """Verify the diagnostics helper redacts contract id / username."""
+class TestRedact:
+    """The client hides its contract number and login from log messages (#85)."""
 
-    def test_scrub_redacts_contract_id_in_repr(self) -> None:
-        """An exception whose repr contains the contract ID gets redacted."""
-        err = EauxDeMarseilleApiError("Request to https://example.com/foo/1234567 failed: timeout")
-        scrubbed = _scrub_exception(err, contract_id="1234567", username="bob@x.com")
-        assert "1234567" not in scrubbed
+    def test_redacts_contract_id(self, client: EauxDeMarseilleClient) -> None:
+        """A request URL carrying the contract number is scrubbed."""
+        scrubbed = client.redact(f"HTTP 500 at {_API_BASE}/foo/{CONTRACT_ID}")
+        assert CONTRACT_ID not in scrubbed
         assert "**REDACTED**" in scrubbed
 
-    def test_scrub_redacts_username(self) -> None:
-        """An exception whose repr contains the username gets redacted."""
-        err = EauxDeMarseilleAuthError("Login failed for bob@x.com: HTTP 401")
-        scrubbed = _scrub_exception(err, contract_id="1234567", username="bob@x.com")
-        assert "bob@x.com" not in scrubbed
-        assert "**REDACTED**" in scrubbed
+    def test_redacts_login_whatever_its_case(self, client: EauxDeMarseilleClient) -> None:
+        """The portal may echo the login in another case: it is scrubbed too."""
+        scrubbed = client.redact("Login failed for USER@Example.com")
+        assert "example.com" not in scrubbed.lower()
 
-    def test_scrub_passthrough_when_empty_id(self) -> None:
-        """No-op when contract id / username are empty."""
-        err = EauxDeMarseilleApiError("transport error")
-        scrubbed = _scrub_exception(err, contract_id="", username="")
-        assert "transport error" in scrubbed
+    async def test_passthrough_when_identifiers_are_empty(self) -> None:
+        """Empty identifiers leave the text untouched."""
+        bare = EauxDeMarseilleClient(login="", password="", contract_id="")
+        try:
+            assert bare.redact("transport error") == "transport error"
+        finally:
+            await bare.close()
+
+    async def test_error_messages_do_not_echo_the_response_body(
+        self, client: EauxDeMarseilleClient
+    ) -> None:
+        """A rejected login body never reaches the exception message."""
+        with aioresponses() as m:
+            m.get(_PORTAL_URL + "/", body="<html></html>")
+            m.post(f"{_API_BASE}/Acces/generateToken", payload={"token": "fake-temp-token"})
+            m.post(
+                f"{_API_BASE}/Utilisateur/authentification",
+                status=401,
+                body='{"email": "user@example.com", "secret": "leaky"}',
+            )
+
+            with pytest.raises(EauxDeMarseilleAuthError) as excinfo:
+                await client.authenticate()
+        assert "leaky" not in str(excinfo.value)
+        assert "user@example.com" not in str(excinfo.value)

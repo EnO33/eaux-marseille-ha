@@ -149,6 +149,7 @@ def mock_client() -> MagicMock:
     client.fetch_monthly_range = AsyncMock(return_value=MOCK_MONTHLY_ENTRIES)
     client.fetch_daily_range = AsyncMock(return_value=[])
     client.close = AsyncMock(return_value=None)
+    client.redact.side_effect = lambda text: text.replace(MOCK_CONTRACT_ID, "**REDACTED**")
     return client
 
 

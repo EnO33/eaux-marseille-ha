@@ -44,11 +44,11 @@ class EauxDeMarseilleCoordinator(DataUpdateCoordinator[ConsumptionData]):
             raise ConfigEntryAuthFailed(
                 translation_domain=DOMAIN,
                 translation_key="auth_failed",
-                translation_placeholders={"error": str(err)},
+                translation_placeholders={"error": self.client.redact(str(err))},
             ) from err
         except EauxDeMarseilleApiError as err:
             raise UpdateFailed(
                 translation_domain=DOMAIN,
                 translation_key="update_failed",
-                translation_placeholders={"error": str(err)},
+                translation_placeholders={"error": self.client.redact(str(err))},
             ) from err

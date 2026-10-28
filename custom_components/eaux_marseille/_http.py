@@ -118,7 +118,7 @@ async def _send_following_redirects(
             )
 
             if 300 <= response.status < 400:
-                cur_method, cur_url = await _redirects.resolve(
+                cur_method, cur_url = _redirects.resolve(
                     response,
                     cur_method,
                     cur_url,
@@ -151,31 +151,26 @@ async def _raise_for_status(response: aiohttp.ClientResponse, url: str) -> None:
       and keep the integration usable).
 
     Any other 4xx falls through to :class:`EauxDeMarseilleApiError`.
+
+    Messages never echo the response body: they reach the Home Assistant
+    log, and a login endpoint's body may carry account details.
     """
     if response.status in (401, 403):
-        text = await response.text()
         raise EauxDeMarseilleSessionExpiredError(
-            f"HTTP {response.status} at {url}: {text[:200]}", status=response.status
+            f"HTTP {response.status} at {url}", status=response.status
         )
     if response.status == 400:
-        text = await response.text()
-        if _is_soft_no_data(text):
-            raise EauxDeMarseilleNoDataError(
-                f"HTTP 400 at {url} (no data yet): {text[:200]}", status=400
-            )
-        raise EauxDeMarseilleApiError(f"HTTP 400 at {url}: {text[:200]}", status=400)
+        if _is_soft_no_data(await response.text()):
+            raise EauxDeMarseilleNoDataError(f"HTTP 400 at {url} (no data yet)", status=400)
+        raise EauxDeMarseilleApiError(f"HTTP 400 at {url}", status=400)
     if 400 <= response.status < 500:
-        text = await response.text()
-        raise EauxDeMarseilleApiError(
-            f"HTTP {response.status} at {url}: {text[:200]}", status=response.status
-        )
+        raise EauxDeMarseilleApiError(f"HTTP {response.status} at {url}", status=response.status)
     if response.status >= 500:
-        text = await response.text()
         raise aiohttp.ClientResponseError(
             response.request_info,
             response.history,
             status=response.status,
-            message=text[:200],
+            message=response.reason or "",
         )
 
 
@@ -204,11 +199,9 @@ async def _parse_json_or_raise(
     try:
         data = await response.json(content_type=None)
     except (json.JSONDecodeError, aiohttp.ContentTypeError) as err:
-        body = await response.text()
         raise EauxDeMarseilleApiError(
             f"Expected JSON from {url} but got "
-            f"content-type={content_type}, status={response.status}. "
-            f"Body starts with: {body[:200]!r}"
+            f"content-type={content_type}, status={response.status}"
         ) from err
     # Every portal and mobility endpoint answers with a JSON object; a list
     # or a scalar would only fail later on ``.get`` as an AttributeError.
