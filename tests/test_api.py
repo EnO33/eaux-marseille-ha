@@ -192,7 +192,10 @@ class TestAuthentication:
             m.post(f"{_API_BASE}/Acces/generateToken", payload={"token": "fake-temp-token"})
             m.post(
                 f"{_API_BASE}/Utilisateur/authentification",
-                payload={"tokenAuthentique": "fake-ael-token", "utilisateurInfo": {}},
+                payload={
+                    "tokenAuthentique": "fake-ael-token",
+                    "utilisateurInfo": {"identifiant": "user@example.com"},
+                },
             )
             m.get(f"{_API_BASE}/Abonnement/getContratParDefaut/", status=403)
 
@@ -455,6 +458,32 @@ class TestJSONErrors:
             assert "Expected JSON" in str(excinfo.value) or "unexpected response" in str(
                 excinfo.value
             )
+
+    async def test_json_list_body_is_api_error(self, client: EauxDeMarseilleClient) -> None:
+        """A JSON list where an object is expected is an API error, not AttributeError."""
+        with aioresponses() as m:
+            m.get(_PORTAL_URL + "/", body="<html></html>")
+            m.post(f"{_API_BASE}/Acces/generateToken", payload=["unexpected"])
+
+            with pytest.raises(EauxDeMarseilleApiError, match="Expected a JSON object"):
+                await client.authenticate()
+
+    @pytest.mark.parametrize("user_info", [None, [], {}, {"nom": "Doe"}])
+    async def test_login_without_user_identifier_is_api_error(
+        self, client: EauxDeMarseilleClient, user_info: object
+    ) -> None:
+        """A login without ``utilisateurInfo.identifiant`` is an API error, not a credentials one."""
+        payload: dict[str, object] = {"tokenAuthentique": "fake-ael-token"}
+        if user_info is not None:
+            payload["utilisateurInfo"] = user_info
+        with aioresponses() as m:
+            m.get(_PORTAL_URL + "/", body="<html></html>")
+            m.post(f"{_API_BASE}/Acces/generateToken", payload={"token": "fake-temp-token"})
+            m.post(f"{_API_BASE}/Utilisateur/authentification", payload=payload)
+
+            with pytest.raises(EauxDeMarseilleApiError, match="utilisateurInfo") as excinfo:
+                await client.authenticate()
+            assert not isinstance(excinfo.value, EauxDeMarseilleAuthError)
 
 
 class TestFetch:
