@@ -169,7 +169,7 @@ def encode_context_cookie(
         "type": "contrat",
         "object": contract,
         "user": {
-            "identifiant": user_info["identifiant"],
+            "identifiant": user_info.get("identifiant") or "",
             "nomComplet": f"{prenom} {nom}".strip(),
             "nom": nom,
             "prenom": prenom,

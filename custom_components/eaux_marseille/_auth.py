@@ -192,7 +192,7 @@ class PortalAuth:
             require_field="token",
             error_prefix="Token generation failed",
         )
-        token: str = data["token"]
+        token: str = data.get("token", "")
         return token
 
     async def _step_login(
@@ -211,8 +211,12 @@ class PortalAuth:
             error_prefix="Login failed",
             checks_credentials=True,
         )
-        ael_token: str = data["tokenAuthentique"]
-        user_info: dict[str, Any] = data["utilisateurInfo"]
+        ael_token: str = data.get("tokenAuthentique", "")
+        user_info = data.get("utilisateurInfo")
+        # The token alone proves the credentials, so a malformed user block
+        # is an unexpected payload, not a reason to ask for a new password.
+        if not isinstance(user_info, dict) or not user_info.get("identifiant"):
+            raise EauxDeMarseilleApiError("Login failed: missing 'utilisateurInfo.identifiant'")
         self._ael_token = ael_token
         self._app_token = None
         self._set_cookie("aelToken", ael_token)
@@ -292,7 +296,7 @@ class PortalAuth:
                 raise EauxDeMarseilleAuthError(f"{error_prefix}: {err}") from err
             raise EauxDeMarseilleApiError(f"{error_prefix}: {err}") from err
 
-        if require_field and (not data or require_field not in data):
+        if require_field and not data.get(require_field):
             error = EauxDeMarseilleAuthError if checks_credentials else EauxDeMarseilleApiError
             raise error(f"{error_prefix}: missing {require_field!r}; got: {sorted(data)}")
         return data

@@ -202,7 +202,7 @@ async def _parse_json_or_raise(
 ) -> dict[str, Any]:
     """Parse the body as JSON, surfacing HTML responses as a clear error."""
     try:
-        data: dict[str, Any] = await response.json(content_type=None)
+        data = await response.json(content_type=None)
     except (json.JSONDecodeError, aiohttp.ContentTypeError) as err:
         body = await response.text()
         raise EauxDeMarseilleApiError(
@@ -210,4 +210,10 @@ async def _parse_json_or_raise(
             f"content-type={content_type}, status={response.status}. "
             f"Body starts with: {body[:200]!r}"
         ) from err
+    # Every portal and mobility endpoint answers with a JSON object; a list
+    # or a scalar would only fail later on ``.get`` as an AttributeError.
+    if not isinstance(data, dict):
+        raise EauxDeMarseilleApiError(
+            f"Expected a JSON object from {url} but got {type(data).__name__}"
+        )
     return data
