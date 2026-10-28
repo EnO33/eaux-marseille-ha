@@ -134,13 +134,16 @@ disable_error_code = ["no-untyped-def", "type-arg", "no-untyped-call"]
 
 [tool.importlinter]
 root_package = "custom_components.eaux_marseille"
+# Needed for the forbidden contract on `homeassistant` below.
+include_external_packages = true
 
 [[tool.importlinter.contracts]]
-name = "Auth/transport stack stays layered (api -> _auth -> _http -> _redirects -> _session)"
+name = "Transport stack stays layered (api -> _auth | _mobile -> _http -> _redirects -> _session)"
 type = "layers"
 layers = [
     "custom_components.eaux_marseille.api",
-    "custom_components.eaux_marseille._auth",
+    # Independent siblings: the mobility client never reaches into the portal login.
+    "custom_components.eaux_marseille._auth | custom_components.eaux_marseille._mobile",
     "custom_components.eaux_marseille._http",
     "custom_components.eaux_marseille._redirects",
     "custom_components.eaux_marseille._session",
@@ -168,6 +171,24 @@ forbidden_modules = [
     "custom_components.eaux_marseille.statistics",
     "custom_components.eaux_marseille.diagnostics",
     "custom_components.eaux_marseille.services",
+]
+
+[[tool.importlinter.contracts]]
+name = "Transport and leaf modules do not depend on Home Assistant"
+type = "forbidden"
+source_modules = [
+    "custom_components.eaux_marseille.api",
+    "custom_components.eaux_marseille._auth",
+    "custom_components.eaux_marseille._mobile",
+    "custom_components.eaux_marseille._http",
+    "custom_components.eaux_marseille._redirects",
+    "custom_components.eaux_marseille._session",
+    "custom_components.eaux_marseille.const",
+    "custom_components.eaux_marseille.exceptions",
+    "custom_components.eaux_marseille.models",
+]
+forbidden_modules = [
+    "homeassistant",
 ]
 
 # ---------------------------------------------------------------------
