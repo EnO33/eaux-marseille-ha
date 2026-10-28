@@ -78,3 +78,24 @@ def test_zero_dashboard_figure_is_kept_not_backfilled() -> None:
     data = ConsumptionData.from_api_responses(last_billed, {}, history)
 
     assert data.last_reading_m3 == 0.0
+
+
+def test_missing_series_and_average_are_unknown_not_zero() -> None:
+    """An empty monthly chart and a missing ``moyenne`` yield ``None``
+    (``unknown`` in HA), not a 0 that pollutes long-term statistics."""
+    data = ConsumptionData.from_api_responses({}, {"consommations": []}, {})
+
+    assert data.current_year_m3 is None
+    assert data.daily_average_m3 is None
+
+
+def test_reported_zeros_are_kept() -> None:
+    """A portal that really reports 0 still produces 0, not ``None``."""
+    data = ConsumptionData.from_api_responses(
+        {"moyenne": 0.0},
+        {"consommations": [{"volumeConsoEnM3": 0.0}, {}]},
+        {},
+    )
+
+    assert data.current_year_m3 == 0.0
+    assert data.daily_average_m3 == 0.0
