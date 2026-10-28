@@ -167,16 +167,21 @@ class TestAuthentication:
     async def test_authenticate_login_outage_is_api_error(
         self, client: EauxDeMarseilleClient
     ) -> None:
-        """A 503 on the login POST after retries must not trigger a reauth."""
+        """A 503 on the login POST is sent once and must not trigger a reauth.
+
+        Replaying a login the server may have processed could count as
+        repeated failed attempts against the account lockout.
+        """
         with aioresponses() as m:
             m.get(_PORTAL_URL + "/", body="<html></html>")
             m.post(f"{_API_BASE}/Acces/generateToken", payload={"token": "fake-temp-token"})
-            for _ in range(3):
-                m.post(f"{_API_BASE}/Utilisateur/authentification", status=503)
+            m.post(f"{_API_BASE}/Utilisateur/authentification", status=503, repeat=True)
 
             with pytest.raises(EauxDeMarseilleApiError, match="Login failed") as excinfo:
                 await client.authenticate()
             assert not isinstance(excinfo.value, EauxDeMarseilleAuthError)
+            logins = [key for key in m.requests if str(key[1]).endswith("/authentification")]
+            assert len(m.requests[logins[0]]) == 1
 
     async def test_authenticate_login_timeout_is_api_error(
         self, client: EauxDeMarseilleClient
@@ -185,8 +190,7 @@ class TestAuthentication:
         with aioresponses() as m:
             m.get(_PORTAL_URL + "/", body="<html></html>")
             m.post(f"{_API_BASE}/Acces/generateToken", payload={"token": "fake-temp-token"})
-            for _ in range(3):
-                m.post(f"{_API_BASE}/Utilisateur/authentification", exception=TimeoutError())
+            m.post(f"{_API_BASE}/Utilisateur/authentification", exception=TimeoutError())
 
             with pytest.raises(EauxDeMarseilleApiError, match="Login failed"):
                 await client.authenticate()

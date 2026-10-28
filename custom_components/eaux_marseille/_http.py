@@ -47,6 +47,7 @@ async def request_with_retry(
     timeout: aiohttp.ClientTimeout,
     headers: dict[str, str],
     allowed_host: str,
+    retry: bool = True,
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Send ``method url`` and return the parsed JSON body.
@@ -55,12 +56,18 @@ async def request_with_retry(
     (1s, 2s, 4s) on transient failures (timeouts, network errors, 5xx).
     Does not retry on 4xx — those are not transient.
 
+    ``retry=False`` sends the request once: a credential submission the
+    server processed but answered with a 5xx must not be replayed, or it
+    may count as repeated failed logins against the account lockout. The
+    coordinator retries on its next poll.
+
     ``allowed_host`` bounds the redirect handler: requests are refused
     if a 3xx points to any other host (CVE-2018-18074 protection).
     """
+    attempts = MAX_RETRIES if retry else 1
     try:
         async for attempt in AsyncRetrying(
-            stop=stop_after_attempt(MAX_RETRIES),
+            stop=stop_after_attempt(attempts),
             wait=wait_exponential(multiplier=BACKOFF_BASE_S, max=8),
             retry=retry_if_exception_type(_RETRY_ON),
             before_sleep=before_sleep_log(_LOGGER, logging.DEBUG),
@@ -78,7 +85,7 @@ async def request_with_retry(
                 )
     except _RETRY_ON as err:
         raise EauxDeMarseilleApiError(
-            f"Request to {url} failed after {MAX_RETRIES} attempts: {err}"
+            f"Request to {url} failed after {attempts} attempt(s): {err}"
         ) from err
     # The async-for loop above either returns or re-raises (reraise=True),
     # so this point is unreachable. Keeping a defensive raise would only

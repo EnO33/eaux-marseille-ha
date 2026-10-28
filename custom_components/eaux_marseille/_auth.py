@@ -281,9 +281,10 @@ class PortalAuth:
         Only a call that ``checks_credentials`` can raise
         :class:`EauxDeMarseilleAuthError`, and only when the portal rejects
         the credentials: a 4xx, or a 200 without ``require_field``. Transport
-        errors, 5xx after retries and non-JSON bodies stay
-        :class:`EauxDeMarseilleApiError` so an outage is retried instead of
-        prompting the user for a password that is still correct.
+        errors, 5xx and non-JSON bodies stay :class:`EauxDeMarseilleApiError`
+        so an outage is retried instead of prompting the user for a password
+        that is still correct. Such a call submits credentials, so it is sent
+        once: replaying it could trip the account lockout.
         """
         try:
             data = await _http.request_with_retry(
@@ -293,6 +294,7 @@ class PortalAuth:
                 timeout=self._timeout,
                 headers=self._headers(extra_headers),
                 allowed_host=self._endpoints.host,
+                retry=not checks_credentials,
                 json=json_payload,
             )
         except EauxDeMarseilleApiError as err:
