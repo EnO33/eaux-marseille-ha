@@ -10,6 +10,11 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.helpers.selector import (
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+)
 
 from .api import (
     EauxDeMarseilleApiError,
@@ -21,11 +26,21 @@ from .const import CONF_CONTRACT_ID, CONF_PROVIDER, DEFAULT_PROVIDER, DOMAIN, Pr
 
 _LOGGER = logging.getLogger(__name__)
 
-# Display labels for each provider in the dropdown.
-_PROVIDER_LABELS = {
-    Provider.SEM: "Société des Eaux de Marseille (Ventabren, Bandol, Vitrolles, Trets…)",
-    Provider.SEMM: "Eau de Marseille Métropole (Marseille, La Ciotat, Cassis, Marignane…)",
-    Provider.VIVAIGO: "Vivaigo (Salon, Berre, Lambesc, Eyguières…)",
+# Provider dropdown; labels live under "selector.provider" in strings.json.
+_PROVIDER_SELECTOR = SelectSelector(
+    SelectSelectorConfig(
+        options=[provider.value for provider in Provider],
+        translation_key=CONF_PROVIDER,
+        mode=SelectSelectorMode.DROPDOWN,
+    )
+)
+
+# Entry titles are stored once and cannot be translated: keep them
+# language-neutral ("SEM 1234567").
+_TITLE_PREFIX = {
+    Provider.SEM: "SEM",
+    Provider.SEMM: "SEMM",
+    Provider.VIVAIGO: "Vivaigo",
 }
 
 # The contract number goes into URL paths and the mobility request body:
@@ -36,9 +51,7 @@ _CONTRACT_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,32}")
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_PROVIDER, default=DEFAULT_PROVIDER.value): vol.In(
-            {p.value: label for p, label in _PROVIDER_LABELS.items()}
-        ),
+        vol.Required(CONF_PROVIDER, default=DEFAULT_PROVIDER.value): _PROVIDER_SELECTOR,
         vol.Required(CONF_USERNAME): str,
         vol.Required(CONF_PASSWORD): str,
         vol.Required(CONF_CONTRACT_ID): str,
@@ -50,6 +63,11 @@ STEP_REAUTH_DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_PASSWORD): str,
     }
 )
+
+
+def _entry_title(provider: Provider, contract_id: str) -> str:
+    """Return the config entry title, e.g. ``"SEM 1234567"``."""
+    return f"{_TITLE_PREFIX[provider]} {contract_id}"
 
 
 def _with_clean_contract(user_input: dict[str, Any]) -> dict[str, Any] | None:
@@ -135,7 +153,7 @@ class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call
             )
             if error is None:
                 return self.async_create_entry(
-                    title=f"Contrat {user_input[CONF_CONTRACT_ID]}",
+                    title=_entry_title(provider, user_input[CONF_CONTRACT_ID]),
                     data=user_input,
                 )
             errors["base"] = error
@@ -233,7 +251,7 @@ class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call
                 return self.async_update_reload_and_abort(
                     entry,
                     data=user_input,
-                    title=f"Contrat {user_input[CONF_CONTRACT_ID]}",
+                    title=_entry_title(provider, user_input[CONF_CONTRACT_ID]),
                 )
             errors["base"] = error
 
@@ -245,7 +263,7 @@ class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call
                 vol.Required(
                     CONF_PROVIDER,
                     default=current.get(CONF_PROVIDER, DEFAULT_PROVIDER.value),
-                ): vol.In({p.value: label for p, label in _PROVIDER_LABELS.items()}),
+                ): _PROVIDER_SELECTOR,
                 vol.Required(CONF_USERNAME, default=current[CONF_USERNAME]): str,
                 vol.Required(CONF_PASSWORD): str,
                 vol.Required(CONF_CONTRACT_ID, default=current[CONF_CONTRACT_ID]): str,

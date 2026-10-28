@@ -45,6 +45,20 @@
       "reconfigure_unique_id_mismatch": "Another entry already exists for this contract on this utility. Remove it before reconfiguring."
     }
   },
+  "selector": {
+    "provider": {
+      "options": {
+        "sem": "Société des Eaux de Marseille (Ventabren, Bandol, Vitrolles, Trets…)",
+        "semm": "Eau de Marseille Métropole (Marseille, La Ciotat, Cassis, Marignane…)",
+        "vivaigo": "Vivaigo (Salon, Berre, Lambesc, Eyguières…)"
+      }
+    }
+  },
+  "device": {
+    "contract": {
+      "name": "Eaux de Marseille - Contract {contract_id}"
+    }
+  },
   "entity": {
     "sensor": {
       "current_month_m3": { "name": "Current month" },

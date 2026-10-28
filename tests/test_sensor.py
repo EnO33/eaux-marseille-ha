@@ -9,7 +9,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr, entity_registry as er
+
+from custom_components.eaux_marseille.const import DOMAIN
 
 from .conftest import MOCK_CONSUMPTION, MOCK_CONTRACT_ID
 
@@ -57,6 +59,11 @@ async def test_sensors_created(
 
     created_keys = {e.unique_id.removeprefix(f"{MOCK_CONTRACT_ID}_") for e in entries}
     assert expected_keys == created_keys
+
+    # The device name comes from the "device.contract" translation.
+    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, MOCK_CONTRACT_ID)})
+    assert device is not None
+    assert device.name == f"Eaux de Marseille - Contract {MOCK_CONTRACT_ID}"
 
 
 async def test_sensor_values(
