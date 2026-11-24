@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator, Iterator
 import pytest
 from aioresponses import aioresponses
 
+from custom_components.eaux_marseille import api
 from custom_components.eaux_marseille.api import EauxDeMarseilleClient
 
 from .portal import CONTRACT_ID, LOGIN, register_auth_flow, register_granularities
@@ -31,6 +32,13 @@ def expected_lingering_timers():
     return True
 
 
+async def _web_client() -> AsyncIterator[EauxDeMarseilleClient]:
+    c = EauxDeMarseilleClient(login=LOGIN, password="password", contract_id=CONTRACT_ID)
+    c._mobile = None
+    yield c
+    await c.close()
+
+
 @pytest.fixture
 async def client() -> AsyncIterator[EauxDeMarseilleClient]:
     """Return a client instance with fake credentials.
@@ -39,10 +47,17 @@ async def client() -> AsyncIterator[EauxDeMarseilleClient]:
     portal in isolation (and don't hit the unmocked mobility API); the
     fallback has its own dedicated test.
     """
-    c = EauxDeMarseilleClient(login=LOGIN, password="password", contract_id=CONTRACT_ID)
-    c._mobile = None
-    yield c
-    await c.close()
+    async for c in _web_client():
+        yield c
+
+
+@pytest.fixture
+async def expiring_client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[EauxDeMarseilleClient]:
+    """Like ``client``, but nothing it caches between polls outlives the call (#126, #127)."""
+    monkeypatch.setattr(api, "BILLED_TTL_S", 0)
+    monkeypatch.setattr(api, "GRANULARITIES_TTL_S", 0)
+    async for c in _web_client():
+        yield c
 
 
 @pytest.fixture

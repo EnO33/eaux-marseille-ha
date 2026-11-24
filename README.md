@@ -176,7 +176,7 @@ The integration polls the customer portal **once per hour**. This interval is in
 
 After the initial setup the integration also runs a **historical backfill** of monthly consumption from January 2024 onward, in the background, plus a daily series when the meter exposes one. The import runs again once a day and whenever a new reading lands, re-deriving the series so that months the portal revises are corrected. Years before last are no longer revised: they are fetched once per Home Assistant start and kept in memory.
 
-Authentication itself uses a cached session token that's reused across polls (since v1.12.0). The full 5-step handshake against the portal only happens at startup or when the portal returns 401/403 (token expired). Steady-state load on the portal is 4 concurrent HTTP requests per hour per contract.
+Authentication itself uses a cached session token that's reused across polls (since v1.12.0). The full 5-step handshake against the portal only happens at startup or when the portal returns 401/403 (token expired). Steady-state load on the portal is 2 concurrent HTTP requests per hour per contract (the monthly chart and the daily series). The billed reading and the billed history, which only change once a billing cycle, are refreshed twice a day; if that refresh fails, the sensors keep the last known values and the next poll tries again.
 
 If a poll fails — portal down, network blip, etc. — Home Assistant retries on the next hour and surfaces the entity as `unavailable` until the next successful refresh.
 

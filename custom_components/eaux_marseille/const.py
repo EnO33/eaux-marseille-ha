@@ -155,6 +155,12 @@ DEFAULT_PROVIDER = Provider.SEM
 
 REQUEST_TIMEOUT_S = 15
 
+# How long portal data that rarely changes is reused across polls.
+# Granularities change on a meter swap or a "Suivi Conso+" subscription (#126);
+# the billed reading and history once a billing cycle, about a quarter (#127).
+GRANULARITIES_TTL_S = 24 * 3600
+BILLED_TTL_S = 12 * 3600
+
 # Exponential backoff on transient errors: 1s, 2s, 4s.
 MAX_RETRIES = 3
 BACKOFF_BASE_S = 1.0

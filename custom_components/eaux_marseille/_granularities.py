@@ -16,14 +16,7 @@ asks the daily chart as it did before this endpoint was used.
 
 from __future__ import annotations
 
-import asyncio
-import time
-from collections.abc import Awaitable, Callable
 from typing import Any
-
-# Granularities can change (meter swap, "Suivi Conso+" subscription), but
-# not by the hour: one request a day is plenty.
-_TTL_S = 24 * 3600
 
 DAILY = "JOURNEE"
 
@@ -48,24 +41,6 @@ def parse_granularities(payload: dict[str, Any]) -> Granularities | None:
     return labels or None
 
 
-class GranularityCache:
-    """Hold the contract's granularities for a day, one fetch at a time.
-
-    An unknown result is cached too: the endpoint may not exist on every
-    provider, and asking it on every poll would cost more than the probe it
-    is meant to save.
-    """
-
-    def __init__(self, fetch: Callable[[], Awaitable[Granularities | None]]) -> None:
-        self._fetch = fetch
-        self._lock = asyncio.Lock()
-        self._value: Granularities | None = None
-        self._expires = float("-inf")
-
-    async def lacks(self, granularity: str) -> bool:
-        """Whether the contract is known not to expose ``granularity``."""
-        async with self._lock:
-            if time.monotonic() >= self._expires:
-                self._value = await self._fetch()
-                self._expires = time.monotonic() + _TTL_S
-            return self._value is not None and granularity not in self._value
+def lacks(known: Granularities | None, granularity: str) -> bool:
+    """Whether ``granularity`` is known to be missing; unknown never lacks anything."""
+    return known is not None and granularity not in known

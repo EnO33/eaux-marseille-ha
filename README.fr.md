@@ -176,7 +176,7 @@ L'intégration interroge le portail client **une fois par heure**. Cet intervall
 
 Au premier ajout, l'intégration lance également un **import historique** des consommations mensuelles depuis janvier 2024, en arrière-plan, plus une série journalière quand le compteur en expose une. L'import est rejoué une fois par jour et à chaque nouveau relevé, en recalculant la série pour corriger les mois que le portail révise. Les années antérieures à l'année dernière ne sont plus révisées : elles sont récupérées une fois par démarrage de Home Assistant puis gardées en mémoire.
 
-L'authentification réutilise un token de session mis en cache entre les polls (depuis v1.12.0). Le handshake complet en 5 étapes contre le portail n'est rejoué qu'au démarrage, ou quand le portail renvoie 401/403 (token expiré). En régime nominal la charge sur le portail est de 4 requêtes HTTP simultanées par heure et par contrat.
+L'authentification réutilise un token de session mis en cache entre les polls (depuis v1.12.0). Le handshake complet en 5 étapes contre le portail n'est rejoué qu'au démarrage, ou quand le portail renvoie 401/403 (token expiré). En régime nominal la charge sur le portail est de 2 requêtes HTTP simultanées par heure et par contrat (le graphique mensuel et la série journalière). Le dernier relevé facturé et l'historique facturé, qui ne changent qu'une fois par cycle de facturation, sont rafraîchis deux fois par jour ; si ce rafraîchissement échoue, les capteurs gardent les dernières valeurs connues et le poll suivant réessaie.
 
 Si un poll échoue — portail KO, panne réseau, etc. — Home Assistant retentera à l'heure suivante et le capteur sera marqué `indisponible` en attendant le prochain succès.
 
