@@ -28,6 +28,9 @@ def new_session(timeout: aiohttp.ClientTimeout) -> aiohttp.ClientSession:
     via systemd-resolved, NSS or /etc/hosts but UDP to the upstream
     DNS is blocked or misconfigured. ThreadedResolver goes through the
     same path the rest of the OS uses and works in all of these cases.
+    It is also why Home Assistant's client session is not injected: its
+    connector pins an aiodns-based resolver (``inject-websession`` exemption
+    in ``quality_scale.yaml``).
 
     Default ``CookieJar`` (i.e. ``unsafe=False``) refuses cookies set
     for IP literals; we only ever talk to the portal hostnames so the

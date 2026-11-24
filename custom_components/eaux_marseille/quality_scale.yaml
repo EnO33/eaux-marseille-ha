@@ -77,7 +77,12 @@ rules:
   inject-websession:
     status: exempt
     comment: |
-      The integration uses a dedicated aiohttp session with its own cookie jar
-      to isolate authentication state per contract; sharing Home Assistant's
-      global session would cross-contaminate cookies between integrations.
+      The client needs a session whose connector uses aiohttp's
+      ThreadedResolver (getaddrinfo). Home Assistant's client sessions,
+      including async_create_clientsession, always get Home Assistant's
+      connector with an aiodns-based resolver, which fails with "Could not
+      contact DNS servers" on HAOS/Docker setups where UDP/53 to the upstream
+      DNS is blocked but the OS resolves names fine (fixed in 1.10.1). A
+      dedicated cookie jar alone would be possible with
+      async_create_clientsession; the resolver is not.
   strict-typing: todo
