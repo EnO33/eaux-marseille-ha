@@ -177,12 +177,15 @@ MAX_REDIRECTS = 5
 
 # Mimic a real browser. Some WAFs gate requests on the User-Agent. The
 # ``Origin``/``Referer`` headers are added per-request because they
-# depend on the active provider.
+# depend on the active provider. An outdated browser version is an easy
+# signal for a WAF rule: bump it to the current stable Chrome during
+# routine maintenance (last bumped 2026-11, Chrome 157; Chrome reports
+# its version reduced to MAJOR.0.0.0).
 BASE_HEADERS: dict[str, str] = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/122.0.0.0 Safari/537.36"
+        "Chrome/157.0.0.0 Safari/537.36"
     ),
     "Accept": "application/json, text/plain, */*",
     "Content-Type": "application/json",
