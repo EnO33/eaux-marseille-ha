@@ -26,7 +26,8 @@ It pulls your water consumption from the chosen portal every hour and exposes it
 
 - UI-based configuration — no YAML editing
 - Supports SEM, SEMM and Vivaigo via a single integration (provider selector in the form)
-- 12 sensors per contract (consumption, meter index, daily average, billing periods)
+- 13 sensors per contract (consumption, meter index, daily average, billing periods)
+- One device per contract, showing the utility, the meter's serial number and how it is read (smart meter or not)
 - Historical monthly statistics imported back to 2024 — works with the HA Energy dashboard
 - Automatic hourly refresh with retry/backoff on transient errors
 - Reauthentication flow when the portal password changes — no need to delete and recreate the integration
@@ -51,6 +52,8 @@ It pulls your water consumption from the chosen portal every hour and exposes it
 | `sensor.eaux_de_marseille_<contract>_releve_precedent` | Previous billed consumption | m³ |
 | `sensor.eaux_de_marseille_<contract>_date_du_releve_precedent` | Previous reading date | — |
 | `sensor.eaux_de_marseille_<contract>_nombre_de_releves` | Total available readings | — |
+
+The two reading dates are Home Assistant date sensors (shown in your language's date format; the state stays `YYYY-MM-DD`), and the period length is a duration in days.
 
 A **monthly external statistic** is also imported under the ID `eaux_marseille:monthly_consumption_<contract>` — usable in `statistics-graph` cards and the Energy dashboard.
 
@@ -176,7 +179,7 @@ The integration polls the customer portal **once per hour**. This interval is in
 
 After the initial setup the integration also runs a **historical backfill** of monthly consumption from January 2024 onward, in the background, plus a daily series when the meter exposes one. The import runs again once a day and whenever a new reading lands, re-deriving the series so that months the portal revises are corrected. Years before last are no longer revised: they are fetched once per Home Assistant start and kept in memory.
 
-Authentication itself uses a cached session token that's reused across polls (since v1.12.0). The full 5-step handshake against the portal only happens at startup or when the portal returns 401/403 (token expired). Steady-state load on the portal is 2 concurrent HTTP requests per hour per contract (the monthly chart and the daily series). The billed reading and the billed history, which only change once a billing cycle, are refreshed twice a day; if that refresh fails, the sensors keep the last known values and the next poll tries again.
+Authentication itself uses a cached session token that's reused across polls (since v1.12.0). The full 5-step handshake against the portal only happens at startup or when the portal returns 401/403 (token expired). Steady-state load on the portal is 2 concurrent HTTP requests per hour per contract (the monthly chart and the daily series). The billed reading and the billed history, which only change once a billing cycle, are refreshed twice a day; if that refresh fails, the sensors keep the last known values and the next poll tries again. The meter's serial number and reading type, shown on the device, are read once when the integration starts.
 
 If a poll fails — portal down, network blip, etc. — Home Assistant retries on the next hour and surfaces the entity as `unavailable` until the next successful refresh.
 
@@ -280,7 +283,7 @@ All three portals are AngularJS SPAs backed by the same REST API (operated by SO
 4. **GET** `/webapi/Abonnement/getContratParDefaut/` — fetches the default contract metadata
 5. The session token is set in the `aelToken` cookie and a serialized context is set in the `AEL_CONTEXT` cookie
 
-Subsequent requests carry the session token in the `token` HTTP header alongside a per-request `ConversationId` header. The integration uses a dedicated `aiohttp.ClientSession` with its own cookie jar (per contract) so cookies don't leak across integrations.
+Subsequent requests carry the session token in the `token` HTTP header alongside a per-request `ConversationId` header. The integration uses a dedicated `aiohttp.ClientSession` per contract, with its own cookie jar, that resolves host names through the operating system (`ThreadedResolver`) instead of Home Assistant's shared resolver: the latter fails on some HAOS/Docker setups where direct DNS queries are blocked.
 
 ## Security
 

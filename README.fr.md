@@ -26,7 +26,8 @@ L'intégration récupère votre consommation d'eau depuis le portail choisi tout
 
 - Configuration via l'interface Home Assistant — pas de YAML
 - Supporte SEM, SEMM et Vivaigo via une seule intégration (sélecteur de fournisseur dans le formulaire)
-- 12 capteurs par contrat (consommation, index compteur, moyenne journalière, périodes de facturation)
+- 13 capteurs par contrat (consommation, index compteur, moyenne journalière, périodes de facturation)
+- Un appareil par contrat, avec le fournisseur, le numéro de série du compteur et son mode de relève (télérelevé ou non)
 - Import des statistiques mensuelles historiques depuis 2024 — compatible avec le tableau de bord Énergie de HA
 - Rafraîchissement automatique toutes les heures avec retry/backoff sur erreurs transitoires
 - Flux de réauthentification quand le mot de passe du portail change — plus besoin de supprimer/recréer l'intégration
@@ -51,6 +52,8 @@ L'intégration récupère votre consommation d'eau depuis le portail choisi tout
 | `sensor.eaux_de_marseille_<contrat>_releve_precedent` | Avant-dernière consommation facturée | m³ |
 | `sensor.eaux_de_marseille_<contrat>_date_du_releve_precedent` | Date du relevé précédent | — |
 | `sensor.eaux_de_marseille_<contrat>_nombre_de_releves` | Nombre total de relevés disponibles | — |
+
+Les deux dates de relevé sont des capteurs de type date de Home Assistant (affichées au format de date de votre langue ; l'état reste `AAAA-MM-JJ`), et la durée de la période est une durée en jours.
 
 Une **statistique externe mensuelle** est également importée sous l'identifiant `eaux_marseille:monthly_consumption_<contrat>` — utilisable dans les cartes `statistics-graph` et le tableau de bord Énergie.
 
@@ -176,7 +179,7 @@ L'intégration interroge le portail client **une fois par heure**. Cet intervall
 
 Au premier ajout, l'intégration lance également un **import historique** des consommations mensuelles depuis janvier 2024, en arrière-plan, plus une série journalière quand le compteur en expose une. L'import est rejoué une fois par jour et à chaque nouveau relevé, en recalculant la série pour corriger les mois que le portail révise. Les années antérieures à l'année dernière ne sont plus révisées : elles sont récupérées une fois par démarrage de Home Assistant puis gardées en mémoire.
 
-L'authentification réutilise un token de session mis en cache entre les polls (depuis v1.12.0). Le handshake complet en 5 étapes contre le portail n'est rejoué qu'au démarrage, ou quand le portail renvoie 401/403 (token expiré). En régime nominal la charge sur le portail est de 2 requêtes HTTP simultanées par heure et par contrat (le graphique mensuel et la série journalière). Le dernier relevé facturé et l'historique facturé, qui ne changent qu'une fois par cycle de facturation, sont rafraîchis deux fois par jour ; si ce rafraîchissement échoue, les capteurs gardent les dernières valeurs connues et le poll suivant réessaie.
+L'authentification réutilise un token de session mis en cache entre les polls (depuis v1.12.0). Le handshake complet en 5 étapes contre le portail n'est rejoué qu'au démarrage, ou quand le portail renvoie 401/403 (token expiré). En régime nominal la charge sur le portail est de 2 requêtes HTTP simultanées par heure et par contrat (le graphique mensuel et la série journalière). Le dernier relevé facturé et l'historique facturé, qui ne changent qu'une fois par cycle de facturation, sont rafraîchis deux fois par jour ; si ce rafraîchissement échoue, les capteurs gardent les dernières valeurs connues et le poll suivant réessaie. Le numéro de série du compteur et son mode de relève, affichés sur l'appareil, sont lus une fois au démarrage de l'intégration.
 
 Si un poll échoue — portail KO, panne réseau, etc. — Home Assistant retentera à l'heure suivante et le capteur sera marqué `indisponible` en attendant le prochain succès.
 
@@ -280,7 +283,7 @@ Les trois portails sont des SPA AngularJS reposant sur la même API REST (opér�
 4. **GET** `/webapi/Abonnement/getContratParDefaut/` — récupère les métadonnées du contrat par défaut
 5. Le token de session est posé dans le cookie `aelToken` et un contexte sérialisé dans le cookie `AEL_CONTEXT`
 
-Les requêtes suivantes embarquent le token de session dans l'en-tête HTTP `token`, accompagné d'un en-tête `ConversationId` régénéré à chaque requête. L'intégration utilise une `aiohttp.ClientSession` dédiée avec son propre cookie jar (par contrat) pour éviter toute fuite de cookies entre intégrations.
+Les requêtes suivantes embarquent le token de session dans l'en-tête HTTP `token`, accompagné d'un en-tête `ConversationId` régénéré à chaque requête. L'intégration utilise une `aiohttp.ClientSession` dédiée par contrat, avec son propre cookie jar, qui résout les noms d'hôte par le système d'exploitation (`ThreadedResolver`) plutôt que par le résolveur partagé de Home Assistant : ce dernier échoue sur certaines installations HAOS/Docker où les requêtes DNS directes sont bloquées.
 
 ## Sécurité
 
