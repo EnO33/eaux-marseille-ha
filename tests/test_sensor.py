@@ -11,7 +11,9 @@ import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
-from .conftest import MOCK_CONSUMPTION, MOCK_CONTRACT_ID
+from custom_components.eaux_marseille.api import MeterInfo
+
+from .conftest import MOCK_CONSUMPTION, MOCK_CONTRACT_ID, MOCK_METER, setup_loaded_entry
 
 pytestmark = [pytest.mark.ha_required, pytest.mark.usefixtures("enable_custom_integrations")]
 
@@ -62,6 +64,33 @@ async def test_sensors_created(
     devices = dr.async_entries_for_config_entry(dr.async_get(hass), mock_config_entry.entry_id)
     assert [device.name for device in devices] == [
         f"Eaux de Marseille - Contract {MOCK_CONTRACT_ID}"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("meter", "model"),
+    [
+        (MOCK_METER, "Smart water meter"),
+        (MeterInfo(serial_number="I21LA123456", reading_type="RELEVE MANUELLE"), "Water meter"),
+        (MeterInfo(reading_type="tele-relevee"), "Smart water meter"),
+        (MeterInfo(), None),
+    ],
+    ids=["smart", "unknown-type", "lowercase-type", "not-described"],
+)
+async def test_device_meter_info(
+    hass: HomeAssistant,
+    mock_client: MagicMock,
+    mock_config_entry,
+    meter: MeterInfo,
+    model: str | None,
+) -> None:
+    """The device's model and serial come from the portal's subscription detail (#128)."""
+    mock_client.fetch_meter_info.return_value = meter
+    await setup_loaded_entry(hass, mock_client, mock_config_entry)
+
+    devices = dr.async_entries_for_config_entry(dr.async_get(hass), mock_config_entry.entry_id)
+    assert [(device.model, device.serial_number) for device in devices] == [
+        (model, meter.serial_number)
     ]
 
 

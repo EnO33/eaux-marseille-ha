@@ -26,12 +26,14 @@ CONTRACT_URL = f"{API_BASE}/Abonnement/getContratParDefaut/"
 LAST_BILLED_URL = f"{API_BASE}/TableauDeBord/derniereConsommationFacturee/{CONTRACT_ID}"
 HISTORY_URL = f"{API_BASE}/Facturation/listeConsommationsFacturees/{CONTRACT_ID}"
 GRANULARITIES_URL = f"{API_BASE}/Consommation/getDatesMinMaxConsommations/{CONTRACT_ID}"
+DETAIL_URL = f"{API_BASE}/Abonnement/detailAbonnement/{CONTRACT_ID}"
 CHART_RE = re.compile(r".*listeConsommationsInstanceAlerteChart.*")
 MONTHLY_RE = re.compile(r".*listeConsommationsInstanceAlerteChart.*/MOIS/true")
 DAILY_RE = re.compile(r".*listeConsommationsInstanceAlerteChart.*/JOURNEE/true")
 LAST_BILLED_RE = re.compile(re.escape(LAST_BILLED_URL))
 HISTORY_RE = re.compile(re.escape(HISTORY_URL))
 GRANULARITIES_RE = re.compile(re.escape(GRANULARITIES_URL))
+DETAIL_RE = re.compile(re.escape(DETAIL_URL))
 
 USER_INFO = {
     "identifiant": LOGIN,

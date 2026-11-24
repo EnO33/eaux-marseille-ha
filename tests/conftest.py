@@ -6,7 +6,7 @@ import inspect
 import sys
 from datetime import UTC, datetime, tzinfo
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aiohttp.client_reqrep import ClientResponse as _ClientResponse
@@ -81,7 +81,11 @@ except (ImportError, ModuleNotFoundError):
     ):
         sys.modules[mod] = _ha
 
-from custom_components.eaux_marseille.api import ConsumptionData, EauxDeMarseilleClient
+from custom_components.eaux_marseille.api import (
+    ConsumptionData,
+    EauxDeMarseilleClient,
+    MeterInfo,
+)
 
 MOCK_USERNAME = "user@example.com"
 MOCK_PASSWORD = "s3cret"
@@ -109,6 +113,8 @@ MOCK_CONSUMPTION = ConsumptionData(
     current_year_m3=18.443,
     total_readings=10,
 )
+
+MOCK_METER = MeterInfo(serial_number="I21LA123456", reading_type="TELE-RELEVEE")
 
 MOCK_MONTHLY_ENTRIES = [
     {
@@ -139,6 +145,25 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip_ha)
 
 
+async def setup_loaded_entry(hass, mock_client: MagicMock, entry) -> None:
+    """Bring the integration up to ``LOADED`` for ``entry``, backed by ``mock_client``."""
+    with (
+        patch(
+            "custom_components.eaux_marseille._client_factory.EauxDeMarseilleClient",
+            return_value=mock_client,
+        ),
+        patch(
+            "custom_components.eaux_marseille.coordinator.EauxDeMarseilleCoordinator._async_update_data",
+            return_value=MOCK_CONSUMPTION,
+        ),
+        patch(
+            "custom_components.eaux_marseille.async_import_historical_statistics",
+        ),
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+
 @pytest.fixture
 def mock_client() -> MagicMock:
     """Return a mocked EauxDeMarseilleClient with async methods."""
@@ -148,6 +173,7 @@ def mock_client() -> MagicMock:
     client.fetch = AsyncMock(return_value=MOCK_CONSUMPTION)
     client.fetch_monthly_range = AsyncMock(return_value=MOCK_MONTHLY_ENTRIES)
     client.fetch_daily_range = AsyncMock(return_value=[])
+    client.fetch_meter_info = AsyncMock(return_value=MOCK_METER)
     client.close = AsyncMock(return_value=None)
     client.redact.side_effect = lambda text: text.replace(MOCK_CONTRACT_ID, "**REDACTED**")
     return client

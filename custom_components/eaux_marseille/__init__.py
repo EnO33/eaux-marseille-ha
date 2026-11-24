@@ -14,7 +14,7 @@ from homeassistant.helpers.event import async_track_time_interval
 
 from ._client_factory import build_client
 from ._migrate import async_migrate
-from .api import EauxDeMarseilleClient
+from .api import EauxDeMarseilleClient, MeterInfo
 from .const import CONF_CONTRACT_ID, DOMAIN
 from .coordinator import EauxDeMarseilleCoordinator
 from .services import async_register_services
@@ -43,6 +43,7 @@ class EauxDeMarseilleData:
 
     client: EauxDeMarseilleClient
     coordinator: EauxDeMarseilleCoordinator
+    meter: MeterInfo
 
 
 # Type alias for our typed config entries.
@@ -67,7 +68,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: EauxDeMarseilleConfigEnt
     coordinator = EauxDeMarseilleCoordinator(hass, client)
     await coordinator.async_config_entry_first_refresh()
 
-    entry.runtime_data = EauxDeMarseilleData(client=client, coordinator=coordinator)
+    # The meter does not change between polls: read once, for the device info.
+    entry.runtime_data = EauxDeMarseilleData(
+        client=client, coordinator=coordinator, meter=await client.fetch_meter_info()
+    )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 

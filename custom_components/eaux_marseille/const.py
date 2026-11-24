@@ -147,6 +147,11 @@ PROVIDER_MANUFACTURER: dict[Provider, str] = {
     Provider.VIVAIGO: "Vivaigo",
 }
 
+# Device ``model`` by the portal's reading type (``libelleTypeReleve``, #128).
+# Home Assistant does not translate a device's model: English, like core.
+METER_MODELS: dict[str, str] = {"TELE-RELEVEE": "Smart water meter"}
+DEFAULT_METER_MODEL = "Water meter"
+
 DEFAULT_PROVIDER = Provider.SEM
 
 # ---------------------------------------------------------------------

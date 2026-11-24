@@ -4,9 +4,9 @@ Home Assistant exposes a "Download diagnostics" button on the integration
 page; clicking it calls :func:`async_get_config_entry_diagnostics` and
 returns a JSON file the user can attach to bug reports.
 
-We sanitize the username and contract number, and never include the
-password — the goal is to surface useful runtime state without leaking
-credentials.
+We sanitize the username, contract number and meter serial, and never
+include the password — the goal is to surface useful runtime state
+without leaking credentials.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from homeassistant.core import HomeAssistant
 from . import EauxDeMarseilleConfigEntry
 from .const import CONF_CONTRACT_ID
 
-_REDACT_KEYS = {CONF_PASSWORD, CONF_USERNAME, CONF_CONTRACT_ID}
+_REDACT_KEYS = {CONF_PASSWORD, CONF_USERNAME, CONF_CONTRACT_ID, "serial_number"}
 
 
 async def async_get_config_entry_diagnostics(
@@ -50,4 +50,5 @@ async def async_get_config_entry_diagnostics(
             ),
         },
         "data": asdict(coordinator.data) if coordinator.data is not None else None,
+        "meter": async_redact_data(asdict(entry.runtime_data.meter), _REDACT_KEYS),
     }

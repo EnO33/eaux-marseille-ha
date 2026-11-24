@@ -131,7 +131,7 @@ class PortalAuth:
     # Authenticated GET (used by the consumption client after step 5)
     # ------------------------------------------------------------------
 
-    async def get(self, path: str) -> dict[str, Any]:
+    async def get(self, path: str, *, retry: bool = True) -> dict[str, Any]:
         """Authenticated GET on a path under the active portal's API base."""
         return await _http.request_with_retry(
             self._session,
@@ -140,6 +140,7 @@ class PortalAuth:
             timeout=self._timeout,
             headers=self._headers(),
             allowed_host=self._endpoints.host,
+            retry=retry,
         )
 
     # ------------------------------------------------------------------
