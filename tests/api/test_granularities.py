@@ -116,12 +116,12 @@ async def test_granularities_are_refreshed_once_expired(
 async def test_monthly_only_contract_goes_straight_to_mobility(mock_auth: aioresponses) -> None:
     """The mobility fallback still fills the daily series when the web has none."""
     client = EauxDeMarseilleClient(login=LOGIN, password="password", contract_id=CONTRACT_ID)
-    assert client._mobile is not None
+    assert client._daily._mobile is not None
 
     async def _recent_daily() -> list[dict[str, Any]]:
         return [{"dateReleve": "2026-11-23T00:00:00", "valeurIndex": 500}]
 
-    client._mobile.recent_daily = _recent_daily
+    client._daily._mobile.recent_daily = _recent_daily
     try:
         data = await client.fetch()
     finally:

@@ -63,14 +63,10 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"custom_components/eaux_marseille/_http.py" = [
+"custom_components/eaux_marseille/{_http,_connect}.py" = [
     # The `timeout` parameter here is an `aiohttp.ClientTimeout` config
     # object passed to `session.request()`, not a numeric deadline. Ruff's
     # ASYNC109 suggestion to use `asyncio.timeout()` does not apply.
-    "ASYNC109",
-]
-"custom_components/eaux_marseille/_auth.py" = [
-    # Same reason as _http.py: timeout is a ClientTimeout config object.
     "ASYNC109",
 ]
 "tests/*" = [
@@ -138,15 +134,29 @@ root_package = "custom_components.eaux_marseille"
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
-name = "Transport stack stays layered (api -> _auth | _mobile | _year_cache | _granularities | _meter | _ttl_cache -> _http -> _redirects -> _session)"
+name = "Transport stack stays layered (api -> _daily -> _portal_reads -> _auth | _mobile | _year_cache | _granularities | _meter | _ttl_cache -> _connect -> _http -> _redirects -> _session)"
 type = "layers"
 layers = [
     "custom_components.eaux_marseille.api",
+    "custom_components.eaux_marseille._daily",
+    "custom_components.eaux_marseille._portal_reads",
     # Independent siblings: the mobility client never reaches into the portal login.
     "custom_components.eaux_marseille._auth | custom_components.eaux_marseille._mobile | custom_components.eaux_marseille._year_cache | custom_components.eaux_marseille._granularities | custom_components.eaux_marseille._meter | custom_components.eaux_marseille._ttl_cache",
+    "custom_components.eaux_marseille._connect",
     "custom_components.eaux_marseille._http",
     "custom_components.eaux_marseille._redirects",
     "custom_components.eaux_marseille._session",
+]
+
+[[tool.importlinter.contracts]]
+name = "The mobility client never reaches into the portal login or reads"
+type = "forbidden"
+source_modules = ["custom_components.eaux_marseille._mobile"]
+forbidden_modules = [
+    "custom_components.eaux_marseille._auth",
+    "custom_components.eaux_marseille._connect",
+    "custom_components.eaux_marseille._portal_reads",
+    "custom_components.eaux_marseille._daily",
 ]
 
 [[tool.importlinter.contracts]]
@@ -168,6 +178,9 @@ forbidden_modules = [
     "custom_components.eaux_marseille._granularities",
     "custom_components.eaux_marseille._meter",
     "custom_components.eaux_marseille._ttl_cache",
+    "custom_components.eaux_marseille._daily",
+    "custom_components.eaux_marseille._portal_reads",
+    "custom_components.eaux_marseille._connect",
     "custom_components.eaux_marseille._client_factory",
     "custom_components.eaux_marseille._migrate",
     "custom_components.eaux_marseille.coordinator",
@@ -195,6 +208,9 @@ source_modules = [
     "custom_components.eaux_marseille.exceptions",
     "custom_components.eaux_marseille.models",
     "custom_components.eaux_marseille._meter",
+    "custom_components.eaux_marseille._daily",
+    "custom_components.eaux_marseille._portal_reads",
+    "custom_components.eaux_marseille._connect",
 ]
 forbidden_modules = [
     "homeassistant",

@@ -4,36 +4,33 @@ This module exposes :class:`EauxDeMarseilleClient`, an asynchronous
 client that authenticates against the chosen provider's portal and
 fetches the per-contract consumption data.
 
-The auth flow lives in :mod:`._auth`, the HTTP transport in
-:mod:`._http`, the data shapes in :mod:`.models`, the constants in
-:mod:`.const`. This file is the orchestrator that ties them together.
+The auth flow lives in :mod:`._auth`, the contract's endpoints in
+:mod:`._portal_reads`, the daily series and its mobility fallback in
+:mod:`._daily`, the session and landing page in :mod:`._connect`, the HTTP
+transport in :mod:`._http`, the data shapes in :mod:`.models`. This file
+is the orchestrator that ties them together.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
-from datetime import datetime
 from typing import Any
 
 import aiohttp
 
 from ._auth import PortalAuth
-from ._granularities import DAILY, Granularities, lacks, parse_granularities
+from ._connect import new_session
+from ._daily import DailySource, mobile_client
+from ._granularities import DAILY, MONTHLY
 from ._meter import MeterInfo
-from ._mobile import MobileClient
-from ._session import SessionGuard
+from ._portal_reads import PortalReader
+from ._session import SessionGuard, all_or_first_error
 from ._ttl_cache import TtlCache
 from ._year_cache import ClosedYearCache
 from .const import (
     BILLED_TTL_S,
     DEFAULT_PROVIDER,
-    GRANULARITIES_TTL_S,
-    MOBILE_ENDPOINTS,
-    PORTAL_TZ,
     PROVIDERS,
     REQUEST_TIMEOUT_S,
     Provider,
@@ -75,7 +72,6 @@ class EauxDeMarseilleClient:
 
         client = EauxDeMarseilleClient(login, password, contract_id)
         try:
-            await client.authenticate()
             data = await client.fetch()
         finally:
             await client.close()
@@ -90,26 +86,11 @@ class EauxDeMarseilleClient:
         timeout: int = REQUEST_TIMEOUT_S,
         provider: Provider = DEFAULT_PROVIDER,
     ) -> None:
-        self._contract_id = contract_id
         # Kept only to scrub them from messages bound for the HA log.
         self._identifiers = (contract_id, login)
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._owns_session = session is None
-        # We deliberately use ThreadedResolver (socket.getaddrinfo via NSS)
-        # rather than aiohttp's default AsyncResolver (aiodns/c-ares). aiodns
-        # talks UDP/53 directly to the resolvers in /etc/resolv.conf, which
-        # fails on some HAOS/Docker setups where the OS resolves names fine
-        # via systemd-resolved, NSS or /etc/hosts but UDP to the upstream
-        # DNS is blocked or misconfigured. ThreadedResolver goes through the
-        # same path the rest of the OS uses and works in all of these cases.
-        # Default ``CookieJar`` (i.e. ``unsafe=False``) refuses cookies set
-        # for IP literals; we only ever talk to the portal hostnames so the
-        # stricter mode adds defence-in-depth at zero cost.
-        self._session = session or aiohttp.ClientSession(
-            cookie_jar=aiohttp.CookieJar(),
-            timeout=self._timeout,
-            connector=aiohttp.TCPConnector(resolver=aiohttp.ThreadedResolver()),
-        )
+        self._session = session or new_session(self._timeout)
         # Credentials and provider live on PortalAuth, the only component
         # that uses them. The client just orchestrates fetches.
         self._auth = PortalAuth(
@@ -125,24 +106,17 @@ class EauxDeMarseilleClient:
             authenticate=self._auth.authenticate,
             invalidate=self._auth.invalidate,
         )
-        # The mobility API (phone-app backend) exposes daily readings the
-        # web portal keeps monthly-only. Used only as a daily fallback, and
-        # only for providers whose mobility config is known.
-        mobile_endpoints = MOBILE_ENDPOINTS.get(provider)
-        self._mobile = (
-            MobileClient(
-                self._session,
-                mobile_endpoints,
-                self._timeout,
-                login=login,
-                password=password,
-                contract_id=contract_id,
-            )
-            if mobile_endpoints is not None
-            else None
+        self._reader = PortalReader(self._auth, contract_id, self.redact)
+        mobile = mobile_client(
+            self._session,
+            self._timeout,
+            provider,
+            login=login,
+            password=password,
+            contract_id=contract_id,
         )
+        self._daily = DailySource(self._reader, mobile, self.redact)
         self._closed_years = ClosedYearCache()
-        self._granularities = TtlCache(self._fetch_granularities, GRANULARITIES_TTL_S)
         # The billed reading and history only move once a billing cycle: they
         # are refreshed twice a day, and a failed refresh keeps the last ones.
         self._billed = TtlCache(self._fetch_billed, BILLED_TTL_S, stale_on_error=True)
@@ -168,10 +142,8 @@ class EauxDeMarseilleClient:
         """Ensure a portal session is established.
 
         Idempotent: returns immediately if a long-lived AEL token is
-        already cached. Callers that want to force a fresh handshake
-        (e.g. on a config-flow validate) should call
-        ``self._auth.invalidate()`` first or just let
-        :meth:`fetch` recover from the inevitable 401.
+        already cached. The fetches authenticate on demand: this is for
+        callers that only want to check the credentials (config flow).
         """
         await self._guard.ensure()
 
@@ -180,11 +152,11 @@ class EauxDeMarseilleClient:
 
         The portal rejects a contract outside the account with a 4xx (404
         observed on SEM). A fresh contract's soft 400 ("no data yet") is
-        tolerated by :meth:`_safe_get` and counts as valid; 5xx and
-        transport errors stay :class:`EauxDeMarseilleApiError`.
+        tolerated and counts as valid; 5xx and transport errors stay
+        :class:`EauxDeMarseilleApiError`.
         """
         try:
-            await self._guard.run(lambda: self._safe_get(self._last_billed_path))
+            await self._guard.run(self._reader.last_billed)
         except EauxDeMarseilleApiError as err:
             if err.status is not None and 400 <= err.status < 500:
                 raise EauxDeMarseilleContractError(
@@ -195,11 +167,11 @@ class EauxDeMarseilleClient:
     async def fetch(self) -> ConsumptionData:
         """Fetch the consumption endpoints and aggregate the result.
 
-        Reuses the cached AEL session token across calls and
-        transparently re-authenticates once if the portal returns 401/403
-        (token expired). Net effect in the steady state: the monthly and
-        daily charts, concurrently, plus the two billing endpoints twice a
-        day (#127).
+        Authenticates on demand, reuses the cached AEL session token across
+        calls and transparently re-authenticates once if the portal returns
+        401/403 (token expired). Net effect in the steady state: the monthly
+        and daily charts, concurrently, plus the two billing endpoints twice
+        a day (#127).
         """
         return await self._guard.run(self._fetch_inner)
 
@@ -209,11 +181,8 @@ class EauxDeMarseilleClient:
         Fetched once per setup for the device info: best-effort and sent
         once (no retry), so a slow or failing portal never holds up the setup.
         """
-        path = f"/Abonnement/detailAbonnement/{self._contract_id}"
         try:
-            detail = await self._guard.run(
-                lambda: self._optional_get(path, "subscription detail", retry=False)
-            )
+            detail = await self._guard.run(self._reader.meter_detail)
         except EauxDeMarseilleError as err:
             _LOGGER.debug("Subscription detail unavailable: %s", self.redact(str(err)))
             detail = None
@@ -222,7 +191,9 @@ class EauxDeMarseilleClient:
     async def fetch_monthly_range(self, year: int) -> list[dict[str, Any]]:
         """Return the raw monthly consumption entries for ``year``."""
         return await self._closed_years.get(
-            "MOIS", year, lambda: self._guard.run(lambda: self._chart_entries(year, "MOIS"))
+            MONTHLY,
+            year,
+            lambda: self._guard.run(lambda: self._reader.chart_entries(year, MONTHLY)),
         )
 
     async def fetch_daily_range(self, year: int) -> list[dict[str, Any]]:
@@ -233,24 +204,18 @@ class EauxDeMarseilleClient:
         exposes daily readings even for monthly-only web contracts). The
         fetch is tolerant throughout, so callers never break.
         """
-        return await self._closed_years.get(DAILY, year, lambda: self._daily_range(year))
-
-    async def _daily_range(self, year: int) -> list[dict[str, Any]]:
-        entries = await self._guard.run(lambda: self._chart_entries(year, DAILY, optional=True))
-        # The mobility API only carries recent history, so older years stay
-        # web-only to avoid pointless month-by-month requests.
-        if not entries and (mobile := self._mobile) is not None and year >= portal_now().year - 1:
-            entries = await self._mobile_daily_range(mobile, year)
-        return entries
+        return await self._closed_years.get(
+            DAILY, year, lambda: self._guard.run(lambda: self._daily.year_range(year))
+        )
 
     async def _fetch_inner(self) -> ConsumptionData:
         year = portal_now().year
         # The billed data comes from the cache except twice a day (#127): a
         # steady-state poll sends the two chart requests only.
-        async with _all_or_first_error() as group:
+        async with all_or_first_error() as group:
             billed = group.create_task(self._billed.get())
-            monthly = group.create_task(self._safe_get(self._chart_path(year, "MOIS")))
-            daily = group.create_task(self._recent_daily(year))
+            monthly = group.create_task(self._reader.chart(year, MONTHLY))
+            daily = group.create_task(self._daily.recent(year))
         last, history = billed.result()
         return ConsumptionData.from_api_responses(
             last, monthly.result(), history, daily_entries=daily.result()
@@ -258,151 +223,7 @@ class EauxDeMarseilleClient:
 
     async def _fetch_billed(self) -> tuple[dict[str, Any], dict[str, Any]]:
         """The billed reading and the billed history, fetched together."""
-        async with _all_or_first_error() as group:
-            last = group.create_task(self._safe_get(self._last_billed_path))
-            history = group.create_task(
-                self._safe_get(f"/Facturation/listeConsommationsFacturees/{self._contract_id}")
-            )
+        async with all_or_first_error() as group:
+            last = group.create_task(self._reader.last_billed())
+            history = group.create_task(self._reader.billed_history())
         return last.result(), history.result()
-
-    async def _recent_daily(self, year: int) -> list[dict[str, Any]]:
-        """Daily entries for the poll: web JOURNEE, else the mobility API."""
-        # When the contract exposes the daily series (communicating meter)
-        # its latest entry carries a fresher index (D-1) than the monthly
-        # chart. Tolerant: contracts without daily data get an empty list.
-        daily_entries = await self._chart_entries(year, DAILY, optional=True)
-        # Web portal has no daily series for this contract: fall back to the
-        # mobility API, which exposes it even for monthly-only web contracts.
-        if not daily_entries and (mobile := self._mobile) is not None:
-            daily_entries = await self._mobile_daily(mobile)
-        return daily_entries
-
-    async def _mobile_daily(self, mobile: MobileClient) -> list[dict[str, Any]]:
-        """Recent daily entries from the mobility API — best-effort, never breaks the poll."""
-        try:
-            return await mobile.recent_daily()
-        except EauxDeMarseilleError as err:
-            _LOGGER.debug("Mobile daily fallback unavailable: %s", err)
-            return []
-
-    async def _mobile_daily_range(self, mobile: MobileClient, year: int) -> list[dict[str, Any]]:
-        """Daily entries for ``year`` from the mobility API — best-effort."""
-        try:
-            return await mobile.daily_range(year)
-        except EauxDeMarseilleError as err:
-            _LOGGER.debug("Mobile daily-range fallback unavailable for %d: %s", year, err)
-            return []
-
-    async def _chart_entries(
-        self, year: int, granularity: str, *, optional: bool = False
-    ) -> list[dict[str, Any]]:
-        """Return the ``consommations`` list for a chart granularity.
-
-        For a required series (monthly) this goes through
-        :meth:`_safe_get`, which tolerates the portal's soft 400 ("no
-        data yet" on a fresh contract) and logs it at INFO.
-
-        An ``optional=True`` series (the daily JOURNEE chart, which most
-        contracts don't expose) is not even asked when the contract's
-        granularities lack it (#126); otherwise it goes through
-        :meth:`_optional_get` and an error yields an empty list.
-        """
-        path = self._chart_path(year, granularity)
-        if not optional:
-            data = await self._safe_get(path)
-        elif lacks(await self._granularities.get(), granularity):
-            return []
-        else:
-            data = await self._optional_get(path, f"{granularity} chart") or {}
-        entries: list[dict[str, Any]] = data.get("consommations", [])
-        return entries
-
-    async def _optional_get(
-        self, path: str, label: str, *, retry: bool = True
-    ) -> dict[str, Any] | None:
-        """Authenticated GET for data the contract may not have; ``None`` if unavailable.
-
-        Any API error other than a session expiry is the normal case for
-        such data, so it is logged at DEBUG, status only (the URL carries
-        the contract number). Session expiries are re-raised so
-        :meth:`.SessionGuard.run` can re-authenticate and retry.
-        """
-        try:
-            return await self._auth.get(path, retry=retry)
-        except EauxDeMarseilleSessionExpiredError:
-            raise
-        except EauxDeMarseilleApiError as err:
-            _LOGGER.debug("Optional %s unavailable (HTTP status %s)", label, err.status)
-            return None
-
-    async def _fetch_granularities(self) -> Granularities | None:
-        """The series this contract exposes, ``None`` when the portal does not say."""
-        path = f"/Consommation/getDatesMinMaxConsommations/{self._contract_id}"
-        data = await self._optional_get(path, "granularities")
-        return None if data is None else parse_granularities(data)
-
-    async def _safe_get(self, path: str) -> dict[str, Any]:
-        """Authenticated GET that tolerates the portal's 'no data yet' soft 400.
-
-        Freshly-activated contracts can lack the data behind certain
-        endpoints (typically the monthly consumption chart on a 3-week
-        old meter). The portal signals that with ``HTTP 400`` carrying
-        ``{"severity": "Information", ...}`` rather than an empty list.
-        Substituting an empty dict here lets ``_fetch_inner`` keep going
-        across the remaining endpoints; ``ConsumptionData.from_api_responses``
-        already tolerates missing keys defensively, so the resulting
-        ``ConsumptionData`` has ``None`` for any field whose source
-        endpoint was empty — sensors show as ``unavailable`` until the
-        portal starts serving data.
-        """
-        try:
-            return await self._auth.get(path)
-        except EauxDeMarseilleNoDataError as err:
-            _LOGGER.info(
-                "Portal returned no data (likely a fresh contract): %s", self.redact(str(err))
-            )
-            return {}
-
-    @property
-    def _last_billed_path(self) -> str:
-        return f"/TableauDeBord/derniereConsommationFacturee/{self._contract_id}"
-
-    def _chart_path(self, year: int, granularity: str) -> str:
-        """Build the consumption-chart endpoint path for ``year``.
-
-        ``granularity`` is one of the portal's codes (``MOIS``,
-        ``JOURNEE``, ``SEMAINE``, ``TRIMESTRE``); which ones a contract
-        has is learnt by :meth:`_fetch_granularities`.
-        """
-        start = int(datetime(year, 1, 1, tzinfo=PORTAL_TZ).timestamp())
-        end = int(datetime(year, 12, 31, 23, 59, 59, tzinfo=PORTAL_TZ).timestamp())
-        return (
-            f"/Consommation/listeConsommationsInstanceAlerteChart/"
-            f"{self._contract_id}/{start}/{end}/{granularity}/true"
-        )
-
-
-@asynccontextmanager
-async def _all_or_first_error() -> AsyncIterator[asyncio.TaskGroup]:
-    """Run independent requests concurrently; on failure, raise the first error alone.
-
-    A TaskGroup cancels the other requests as soon as one fails, so a session
-    expiry is retried by SessionGuard without stray requests in flight.
-    """
-    try:
-        async with asyncio.TaskGroup() as group:
-            yield group
-    except BaseExceptionGroup as errors:
-        raise _first_error(errors) from None
-
-
-def _first_error(errors: BaseExceptionGroup[BaseException]) -> BaseException:
-    """Pick the error to re-raise from a failed poll, a session expiry first.
-
-    SessionGuard only re-authenticates on an expiry, so it must win over
-    any concurrent failure it may have caused.
-    """
-    return next(
-        (err for err in errors.exceptions if isinstance(err, EauxDeMarseilleSessionExpiredError)),
-        errors.exceptions[0],
-    )

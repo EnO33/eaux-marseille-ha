@@ -17,6 +17,11 @@ from .const import portal_now
 Entries = list[dict[str, Any]]
 
 
+def is_revisable(year: int) -> bool:
+    """Whether the portal can still revise ``year``: the current one or the previous one."""
+    return year >= portal_now().year - 1
+
+
 class ClosedYearCache:
     """Keep the entries of years the portal no longer revises."""
 
@@ -34,6 +39,6 @@ class ClosedYearCache:
         if (cached := self._entries.get(key)) is not None:
             return list(cached)
         entries = await fetch()
-        if entries and year < portal_now().year - 1:
+        if entries and not is_revisable(year):
             self._entries[key] = list(entries)
         return entries

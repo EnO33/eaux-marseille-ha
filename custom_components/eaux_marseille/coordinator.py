@@ -36,7 +36,7 @@ class EauxDeMarseilleCoordinator(DataUpdateCoordinator[ConsumptionData]):
 
     async def _async_update_data(self) -> ConsumptionData:
         try:
-            await self.client.authenticate()
+            # fetch() logs in on demand: a rejected password surfaces here.
             return await self.client.fetch()
         except EauxDeMarseilleAuthError as err:
             # Triggers Home Assistant's reauth flow so the user can re-enter

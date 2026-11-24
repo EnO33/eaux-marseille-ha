@@ -10,6 +10,7 @@ from aioresponses import CallbackResult, aioresponses
 
 from custom_components.eaux_marseille.api import (
     EauxDeMarseilleApiError,
+    EauxDeMarseilleAuthError,
     EauxDeMarseilleClient,
     EauxDeMarseilleSessionExpiredError,
 )
@@ -19,8 +20,10 @@ from .portal import (
     CHART_RE,
     HISTORY_URL,
     LAST_BILLED_URL,
+    LOGIN_URL,
     register_auth_flow,
     register_granularities,
+    register_token,
 )
 
 
@@ -41,6 +44,15 @@ async def test_authenticate_is_idempotent(
     # succeeds without aioresponses raising proves we didn't replay.
     await client.authenticate()
     assert client._auth.is_authenticated
+
+
+async def test_fetch_with_rejected_password_is_auth_error(client: EauxDeMarseilleClient) -> None:
+    """fetch() logs in on demand, so the coordinator sees a rejected password (#133)."""
+    with aioresponses() as m:
+        register_token(m)
+        m.post(LOGIN_URL, status=401)
+        with pytest.raises(EauxDeMarseilleAuthError, match="Login failed"):
+            await client.fetch()
 
 
 async def test_fetch_skips_redundant_auth(
