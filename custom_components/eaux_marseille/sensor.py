@@ -17,8 +17,10 @@ from ._sensor_descriptions import SENSOR_DESCRIPTIONS, EauxDeMarseilleEntityDesc
 from .const import (
     CONF_CONTRACT_ID,
     CONF_PROVIDER,
+    DEFAULT_METER_MODEL,
     DEFAULT_PROVIDER,
     DOMAIN,
+    METER_MODELS,
     PROVIDER_MANUFACTURER,
     PROVIDERS,
     Provider,
@@ -36,14 +38,31 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Eaux de Marseille sensors from a config entry."""
-    coordinator = entry.runtime_data.coordinator
     contract_id: str = entry.data[CONF_CONTRACT_ID]
     # Entries created before 1.9.0 don't store the provider; default to SEM.
     provider = Provider(entry.data.get(CONF_PROVIDER, DEFAULT_PROVIDER.value))
+    meter = entry.runtime_data.meter
+    device_info = DeviceInfo(
+        identifiers={(DOMAIN, contract_id)},
+        translation_key="contract",
+        translation_placeholders={"contract_id": contract_id},
+        manufacturer=PROVIDER_MANUFACTURER[provider],
+        # Set even when unknown, so the model of an older release is cleared.
+        model=_meter_model(meter.reading_type),
+        serial_number=meter.serial_number,
+        configuration_url=PROVIDERS[provider].url,
+    )
     async_add_entities(
-        EauxDeMarseilleSensor(coordinator, description, contract_id, provider)
+        EauxDeMarseilleSensor(entry.runtime_data.coordinator, description, contract_id, device_info)
         for description in SENSOR_DESCRIPTIONS
     )
+
+
+def _meter_model(reading_type: str | None) -> str | None:
+    """The device model for the portal's reading type; ``None`` when unknown."""
+    if reading_type is None:
+        return None
+    return METER_MODELS.get(reading_type.upper(), DEFAULT_METER_MODEL)
 
 
 class EauxDeMarseilleSensor(CoordinatorEntity[EauxDeMarseilleCoordinator], SensorEntity):
@@ -57,19 +76,12 @@ class EauxDeMarseilleSensor(CoordinatorEntity[EauxDeMarseilleCoordinator], Senso
         coordinator: EauxDeMarseilleCoordinator,
         description: EauxDeMarseilleEntityDescription,
         contract_id: str,
-        provider: Provider,
+        device_info: DeviceInfo,
     ) -> None:
         super().__init__(coordinator)
         self.entity_description = description
         self._attr_unique_id = f"{contract_id}_{description.key}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, contract_id)},
-            translation_key="contract",
-            translation_placeholders={"contract_id": contract_id},
-            manufacturer=PROVIDER_MANUFACTURER[provider],
-            model="Compteur télérelevé",
-            configuration_url=PROVIDERS[provider].url,
-        )
+        self._attr_device_info = device_info
 
     @property
     def native_value(self) -> float | int | str | None:

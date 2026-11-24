@@ -23,6 +23,7 @@ import aiohttp
 
 from ._auth import PortalAuth
 from ._granularities import DAILY, Granularities, lacks, parse_granularities
+from ._meter import MeterInfo
 from ._mobile import MobileClient
 from ._session import SessionGuard
 from ._ttl_cache import TtlCache
@@ -58,6 +59,7 @@ __all__ = [
     "EauxDeMarseilleError",
     "EauxDeMarseilleNoDataError",
     "EauxDeMarseilleSessionExpiredError",
+    "MeterInfo",
     "Provider",
 ]
 
@@ -201,6 +203,22 @@ class EauxDeMarseilleClient:
         """
         return await self._guard.run(self._fetch_inner)
 
+    async def fetch_meter_info(self) -> MeterInfo:
+        """The contract's meter, with unknown fields when the portal does not say (#128).
+
+        Fetched once per setup for the device info: best-effort and sent
+        once (no retry), so a slow or failing portal never holds up the setup.
+        """
+        path = f"/Abonnement/detailAbonnement/{self._contract_id}"
+        try:
+            detail = await self._guard.run(
+                lambda: self._optional_get(path, "subscription detail", retry=False)
+            )
+        except EauxDeMarseilleError as err:
+            _LOGGER.debug("Subscription detail unavailable: %s", self.redact(str(err)))
+            detail = None
+        return MeterInfo.from_api_response(detail or {})
+
     async def fetch_monthly_range(self, year: int) -> list[dict[str, Any]]:
         """Return the raw monthly consumption entries for ``year``."""
         return await self._closed_years.get(
@@ -299,7 +317,9 @@ class EauxDeMarseilleClient:
         entries: list[dict[str, Any]] = data.get("consommations", [])
         return entries
 
-    async def _optional_get(self, path: str, label: str) -> dict[str, Any] | None:
+    async def _optional_get(
+        self, path: str, label: str, *, retry: bool = True
+    ) -> dict[str, Any] | None:
         """Authenticated GET for data the contract may not have; ``None`` if unavailable.
 
         Any API error other than a session expiry is the normal case for
@@ -308,7 +328,7 @@ class EauxDeMarseilleClient:
         :meth:`.SessionGuard.run` can re-authenticate and retry.
         """
         try:
-            return await self._auth.get(path)
+            return await self._auth.get(path, retry=retry)
         except EauxDeMarseilleSessionExpiredError:
             raise
         except EauxDeMarseilleApiError as err:

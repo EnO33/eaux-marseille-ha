@@ -19,35 +19,16 @@ from custom_components.eaux_marseille.services import (
     async_register_services,
 )
 
-from .conftest import MOCK_CONSUMPTION
+from .conftest import setup_loaded_entry
 
 pytestmark = [pytest.mark.ha_required, pytest.mark.usefixtures("enable_custom_integrations")]
-
-
-async def _setup_loaded_entry(hass: HomeAssistant, mock_client: MagicMock, entry) -> None:
-    """Bring the integration up to ``LOADED`` for the given mock entry."""
-    with (
-        patch(
-            "custom_components.eaux_marseille._client_factory.EauxDeMarseilleClient",
-            return_value=mock_client,
-        ),
-        patch(
-            "custom_components.eaux_marseille.coordinator.EauxDeMarseilleCoordinator._async_update_data",
-            return_value=MOCK_CONSUMPTION,
-        ),
-        patch(
-            "custom_components.eaux_marseille.async_import_historical_statistics",
-        ),
-    ):
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
 
 
 async def test_services_registered_after_setup(
     hass: HomeAssistant, mock_client: MagicMock, mock_config_entry
 ) -> None:
     """async_setup registers both refresh and reimport services."""
-    await _setup_loaded_entry(hass, mock_client, mock_config_entry)
+    await setup_loaded_entry(hass, mock_client, mock_config_entry)
     assert hass.services.has_service(DOMAIN, SERVICE_REFRESH)
     assert hass.services.has_service(DOMAIN, SERVICE_REIMPORT_STATISTICS)
 
@@ -64,7 +45,7 @@ async def test_refresh_calls_coordinator(
     hass: HomeAssistant, mock_client: MagicMock, mock_config_entry
 ) -> None:
     """refresh service triggers an immediate coordinator request."""
-    await _setup_loaded_entry(hass, mock_client, mock_config_entry)
+    await setup_loaded_entry(hass, mock_client, mock_config_entry)
 
     coordinator = mock_config_entry.runtime_data.coordinator
     coordinator.async_request_refresh = AsyncMock()
@@ -83,7 +64,7 @@ async def test_reimport_runs_historical_import(
     hass: HomeAssistant, mock_client: MagicMock, mock_config_entry
 ) -> None:
     """reimport service spins up a fresh client and runs the import."""
-    await _setup_loaded_entry(hass, mock_client, mock_config_entry)
+    await setup_loaded_entry(hass, mock_client, mock_config_entry)
 
     fresh_client = MagicMock()
     fresh_client.close = AsyncMock()
@@ -127,7 +108,7 @@ async def test_unloaded_entry_raises(
 ) -> None:
     """An entry that exists but isn't loaded raises ServiceValidationError."""
     # Set up then unload — the entry id stays valid, but state goes back to NOT_LOADED.
-    await _setup_loaded_entry(hass, mock_client, mock_config_entry)
+    await setup_loaded_entry(hass, mock_client, mock_config_entry)
     await hass.config_entries.async_unload(mock_config_entry.entry_id)
     await hass.async_block_till_done()
 
