@@ -13,6 +13,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.event import async_track_time_interval
 
 from ._client_factory import build_client
+from ._migrate import async_migrate
 from .api import EauxDeMarseilleClient
 from .const import CONF_CONTRACT_ID, DOMAIN
 from .coordinator import EauxDeMarseilleCoordinator
@@ -110,6 +111,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: EauxDeMarseilleConfigEnt
     entry.async_on_unload(async_track_time_interval(hass, _run_import, _STATS_REIMPORT_INTERVAL))
 
     return True
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: EauxDeMarseilleConfigEntry) -> bool:
+    """Migrate an entry created by an older version of the integration."""
+    return await async_migrate(hass, entry)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: EauxDeMarseilleConfigEntry) -> bool:

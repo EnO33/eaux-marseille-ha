@@ -11,7 +11,7 @@ import aiohttp
 import pytest
 from aioresponses import aioresponses
 
-from custom_components.eaux_marseille._mobile import MobileClient
+from custom_components.eaux_marseille._mobile import MobileClient, _mobile_date_to_iso
 from custom_components.eaux_marseille.const import (
     MOBILE_ENDPOINTS,
     REQUEST_TIMEOUT_S,
@@ -83,10 +83,14 @@ async def test_recent_daily_translates_to_web_shape(client: MobileClient) -> Non
 
         entries = await client.recent_daily()
 
-    # Litres -> m³, "DD/MM/YYYY" -> ISO, index kept in litres (web shape).
+    # Litres -> m³, "DD/MM/YYYY" -> ISO in Paris time, index kept in litres (web shape).
     assert entries == [
-        {"dateReleve": "2026-09-19T00:00:00", "volumeConsoEnM3": 0.637, "valeurIndex": 246184},
-        {"dateReleve": "2026-09-20T00:00:00", "volumeConsoEnM3": 0.47, "valeurIndex": 246654},
+        {
+            "dateReleve": "2026-09-19T00:00:00+02:00",
+            "volumeConsoEnM3": 0.637,
+            "valeurIndex": 246184,
+        },
+        {"dateReleve": "2026-09-20T00:00:00+02:00", "volumeConsoEnM3": 0.47, "valeurIndex": 246654},
     ]
 
 
@@ -160,7 +164,7 @@ async def test_daily_range_walks_every_month(client: MobileClient) -> None:
 
     assert len(entries) == 12
     assert entries[0] == {
-        "dateReleve": "2024-03-10T00:00:00",
+        "dateReleve": "2024-03-10T00:00:00+01:00",
         "volumeConsoEnM3": 0.1,
         "valeurIndex": 1000,
     }
@@ -218,3 +222,19 @@ def test_mobile_endpoints_cover_all_providers() -> None:
         assert endpoints.base_url == f"https://{host}"
         assert endpoints.host == host
         assert endpoints.user_agent.startswith("Mon Eau ")
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("19/09/2026", "2026-09-19T00:00:00+02:00"),
+        ("05/01/2026", "2026-01-05T00:00:00+01:00"),
+        ("31/02/2026", None),
+        ("2026-09-19", None),
+        (None, None),
+    ],
+    ids=["summer", "winter", "impossible-day", "wrong-format", "missing"],
+)
+def test_mobile_dates_carry_the_portal_offset(value: object, expected: str | None) -> None:
+    """Midnight in Paris time, offset included, whatever the host time zone (#130)."""
+    assert _mobile_date_to_iso(value) == expected

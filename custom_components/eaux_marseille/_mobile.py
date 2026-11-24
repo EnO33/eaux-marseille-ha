@@ -19,13 +19,14 @@ Transport (retry/backoff, JSON parsing, HTTP-error mapping) is delegated to
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any
 
 import aiohttp
 
 from ._http import request_with_retry
 from ._session import SessionGuard
-from .const import MobileEndpoints, portal_now
+from .const import PORTAL_TZ, MobileEndpoints, portal_now
 from .exceptions import (
     EauxDeMarseilleApiError,
     EauxDeMarseilleAuthError,
@@ -190,14 +191,18 @@ def _to_web_entry(releve: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _mobile_date_to_iso(value: object) -> str | None:
-    """Convert a ``"DD/MM/YYYY"`` mobility date to an ISO ``YYYY-MM-DDT00:00:00``."""
+    """Convert a ``"DD/MM/YYYY"`` mobility date to midnight in portal time, ISO.
+
+    The offset is explicit (``2026-09-19T00:00:00+02:00``), like the web chart
+    dates: a naive value would be read in the host's time zone (#130).
+    """
     if not isinstance(value, str):
         return None
     try:
         day, month, year = (int(part) for part in value.split("/"))
+        return datetime(year, month, day, tzinfo=PORTAL_TZ).isoformat()
     except ValueError:
         return None
-    return f"{year:04d}-{month:02d}-{day:02d}T00:00:00"
 
 
 def _as_int(value: str | int | float | None) -> int | None:

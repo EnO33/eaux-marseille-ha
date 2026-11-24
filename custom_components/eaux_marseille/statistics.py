@@ -38,7 +38,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 
 from .api import EauxDeMarseilleClient
-from .const import DOMAIN, portal_now
+from .const import DOMAIN, PORTAL_TZ, portal_now
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -92,7 +92,7 @@ async def async_import_historical_statistics(
         # yields no daily series and we skip the import.
         daily_stats = await _collect_series(client.fetch_daily_range, client.redact)
         if daily_stats:
-            statistic_id = f"{DOMAIN}:daily_consumption_{contract_id}"
+            statistic_id = daily_statistic_id(contract_id)
             async_add_external_statistics(
                 hass,
                 _build_metadata(contract_id, statistic_id, "Daily consumption"),
@@ -123,6 +123,11 @@ async def async_import_historical_statistics(
         return
     # On success, clear any previously raised repair issue.
     ir.async_delete_issue(hass, DOMAIN, issue_id)
+
+
+def daily_statistic_id(contract_id: str) -> str:
+    """The external statistic holding the contract's daily consumption."""
+    return f"{DOMAIN}:daily_consumption_{contract_id}"
 
 
 async def _collect_series(
@@ -187,16 +192,13 @@ def _entry_to_stat(
     if not date_str or value is None:
         return None
 
+    dt = datetime.fromisoformat(date_str)
+    if dt.tzinfo is None:
+        # Every source dates in portal time; should one ever drop the offset,
+        # read it as Paris time, not the host's (#130).
+        dt = dt.replace(tzinfo=PORTAL_TZ)
     # Recorder requires timestamps aligned to the hour.
-    dt = (
-        datetime.fromisoformat(date_str)
-        .astimezone(UTC)
-        .replace(
-            minute=0,
-            second=0,
-            microsecond=0,
-        )
-    )
+    dt = dt.astimezone(UTC).replace(minute=0, second=0, microsecond=0)
 
     consumption = round(float(value), 3)
     return StatisticData(
