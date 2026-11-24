@@ -14,7 +14,14 @@ from custom_components.eaux_marseille.api import (
     EauxDeMarseilleSessionExpiredError,
 )
 
-from .portal import API_BASE, CHART_RE, HISTORY_URL, LAST_BILLED_URL, register_auth_flow
+from .portal import (
+    API_BASE,
+    CHART_RE,
+    HISTORY_URL,
+    LAST_BILLED_URL,
+    register_auth_flow,
+    register_granularities,
+)
 
 
 def _register_empty_charts_and_history(m: aioresponses, *, repeat: bool = False) -> None:
@@ -57,6 +64,7 @@ async def test_expired_session_recovers(client: EauxDeMarseilleClient, status: i
     transparent re-auth and retry."""
     with aioresponses() as m:
         register_auth_flow(m)
+        register_granularities(m)
         m.get(LAST_BILLED_URL, status=status, body="session expired")
         register_auth_flow(m)
         m.get(LAST_BILLED_URL, payload={"valeurIndex": 42.0, "volumeConsoEnM3": 1.0})

@@ -9,7 +9,7 @@ from aioresponses import aioresponses
 
 from custom_components.eaux_marseille.api import EauxDeMarseilleClient
 
-from .portal import CONTRACT_ID, LOGIN, register_auth_flow
+from .portal import CONTRACT_ID, LOGIN, register_auth_flow, register_granularities
 
 
 # Override pytest-homeassistant-custom-component's autouse fixtures that check
@@ -46,8 +46,19 @@ async def client() -> AsyncIterator[EauxDeMarseilleClient]:
 
 
 @pytest.fixture
-def mock_auth() -> Iterator[aioresponses]:
-    """Register all authentication endpoint mocks, once each."""
+def granularities() -> tuple[str, ...] | None:
+    """Granularities the mocked contract lists; ``None`` leaves the endpoint to the test.
+
+    Override it with ``@pytest.mark.parametrize("granularities", ...)``.
+    """
+    return ("MOIS", "JOURNEE")
+
+
+@pytest.fixture
+def mock_auth(granularities: tuple[str, ...] | None) -> Iterator[aioresponses]:
+    """Register all authentication endpoint mocks, once each, and the granularities."""
     with aioresponses() as m:
         register_auth_flow(m)
+        if granularities is not None:
+            register_granularities(m, *granularities)
         yield m

@@ -25,6 +25,7 @@ LOGIN_URL = f"{API_BASE}/Utilisateur/authentification"
 CONTRACT_URL = f"{API_BASE}/Abonnement/getContratParDefaut/"
 LAST_BILLED_URL = f"{API_BASE}/TableauDeBord/derniereConsommationFacturee/{CONTRACT_ID}"
 HISTORY_URL = f"{API_BASE}/Facturation/listeConsommationsFacturees/{CONTRACT_ID}"
+GRANULARITIES_URL = f"{API_BASE}/Consommation/getDatesMinMaxConsommations/{CONTRACT_ID}"
 CHART_RE = re.compile(r".*listeConsommationsInstanceAlerteChart.*")
 MONTHLY_RE = re.compile(r".*listeConsommationsInstanceAlerteChart.*/MOIS/true")
 DAILY_RE = re.compile(r".*listeConsommationsInstanceAlerteChart.*/JOURNEE/true")
@@ -60,6 +61,35 @@ HARD_400: dict[str, Any] = {
     "body": '{"severity": "Error", "message": "not authorised"}',
     "content_type": "application/json",
 }
+
+
+def granularities_payload(*granularities: str) -> dict:
+    """A ``getDatesMinMaxConsommations`` body listing ``granularities``."""
+    window = {"dateMin": "2023-11-24T00:00:00+01:00", "dateMax": "2026-11-21T00:00:00+01:00"}
+    return {
+        "statistiquesConsommation": {
+            "datesParGranularite": [
+                {"intervalleDates": window, "granulariteLibelle": granularity}
+                for granularity in granularities
+            ],
+            "datesConsoFacturees": window,
+        }
+    }
+
+
+def register_granularities(m: aioresponses, *granularities: str) -> None:
+    """Register the contract's granularities; by default they include the daily series.
+
+    Listing ``JOURNEE`` keeps the client asking the daily chart, which is
+    what every test written before this endpoint was used expects.
+    """
+    listed = granularities or ("MOIS", "JOURNEE")
+    m.get(GRANULARITIES_URL, payload=granularities_payload(*listed), repeat=True)
+
+
+def count_requests(m: aioresponses, pattern: re.Pattern[str]) -> int:
+    """Number of requests sent to a URL matching ``pattern``."""
+    return sum(len(calls) for (_, url), calls in m.requests.items() if pattern.match(str(url)))
 
 
 def register_token(m: aioresponses) -> None:

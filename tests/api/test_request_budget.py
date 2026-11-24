@@ -9,13 +9,9 @@ from aioresponses import CallbackResult, aioresponses
 from custom_components.eaux_marseille.api import EauxDeMarseilleClient
 from custom_components.eaux_marseille.const import portal_now
 
-from .portal import CHART_RE, DAILY_RE, HISTORY_URL, LAST_BILLED_URL, MONTHLY_RE
+from .portal import CHART_RE, DAILY_RE, HISTORY_URL, LAST_BILLED_URL, MONTHLY_RE, count_requests
 
 _ENTRY = {"dateReleve": "2024-01-31T00:00:00+01:00", "volumeConsoEnM3": 3.0}
-
-
-def _chart_requests(m: aioresponses) -> int:
-    return sum(len(calls) for key, calls in m.requests.items() if CHART_RE.match(str(key[1])))
 
 
 async def test_poll_requests_run_concurrently(
@@ -55,7 +51,7 @@ async def test_closed_year_is_fetched_once(
         assert await client.fetch_monthly_range(closed) == [_ENTRY]
         assert await client.fetch_daily_range(closed) == [_ENTRY]
 
-    assert _chart_requests(mock_auth) == 2
+    assert count_requests(mock_auth, CHART_RE) == 2
 
 
 async def test_recent_years_are_always_refetched(
@@ -69,7 +65,7 @@ async def test_recent_years_are_always_refetched(
         await client.fetch_monthly_range(year)
         await client.fetch_monthly_range(year - 1)
 
-    assert _chart_requests(mock_auth) == 4
+    assert count_requests(mock_auth, CHART_RE) == 4
 
 
 async def test_empty_closed_year_is_not_cached(

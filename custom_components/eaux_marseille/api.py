@@ -20,6 +20,7 @@ from typing import Any
 import aiohttp
 
 from ._auth import PortalAuth
+from ._granularities import DAILY, Granularities, GranularityCache, parse_granularities
 from ._mobile import MobileClient
 from ._session import SessionGuard
 from ._year_cache import ClosedYearCache
@@ -134,6 +135,7 @@ class EauxDeMarseilleClient:
             else None
         )
         self._closed_years = ClosedYearCache()
+        self._granularities = GranularityCache(self._fetch_granularities)
 
     async def close(self) -> None:
         """Close the underlying session if we own it."""
@@ -204,10 +206,10 @@ class EauxDeMarseilleClient:
         exposes daily readings even for monthly-only web contracts). The
         fetch is tolerant throughout, so callers never break.
         """
-        return await self._closed_years.get("JOURNEE", year, lambda: self._daily_range(year))
+        return await self._closed_years.get(DAILY, year, lambda: self._daily_range(year))
 
     async def _daily_range(self, year: int) -> list[dict[str, Any]]:
-        entries = await self._guard.run(lambda: self._chart_entries(year, "JOURNEE", optional=True))
+        entries = await self._guard.run(lambda: self._chart_entries(year, DAILY, optional=True))
         # The mobility API only carries recent history, so older years stay
         # web-only to avoid pointless month-by-month requests.
         if not entries and (mobile := self._mobile) is not None and year >= portal_now().year - 1:
@@ -235,12 +237,10 @@ class EauxDeMarseilleClient:
 
     async def _recent_daily(self, year: int) -> list[dict[str, Any]]:
         """Daily entries for the poll: web JOURNEE, else the mobility API."""
-        # Always attempt the daily series: when the contract exposes it
-        # (communicating meter) its latest entry carries a fresher index
-        # (D-1) than the monthly chart. Tolerant — contracts without
-        # daily data just get an empty list. No upfront probe needed: the
-        # mere presence of entries tells us whether the meter is daily.
-        daily_entries = await self._chart_entries(year, "JOURNEE", optional=True)
+        # When the contract exposes the daily series (communicating meter)
+        # its latest entry carries a fresher index (D-1) than the monthly
+        # chart. Tolerant: contracts without daily data get an empty list.
+        daily_entries = await self._chart_entries(year, DAILY, optional=True)
         # Web portal has no daily series for this contract: fall back to the
         # mobility API, which exposes it even for monthly-only web contracts.
         if not daily_entries and (mobile := self._mobile) is not None:
@@ -272,28 +272,42 @@ class EauxDeMarseilleClient:
         :meth:`_safe_get`, which tolerates the portal's soft 400 ("no
         data yet" on a fresh contract) and logs it at INFO.
 
-        For an ``optional=True`` series (the daily JOURNEE chart, which
-        most contracts don't expose), any API error other than a session
-        expiry is swallowed at DEBUG and an empty list returned — a
-        monthly-only contract gets that 400 on *every* poll, so it's the
-        normal case, not an anomaly worth an INFO line each time. Session
-        expiries are re-raised so :meth:`.SessionGuard.run` can
-        re-authenticate and retry.
+        An ``optional=True`` series (the daily JOURNEE chart, which most
+        contracts don't expose) is not even asked when the contract's
+        granularities lack it (#126); otherwise it goes through
+        :meth:`_optional_get` and an error yields an empty list.
         """
         path = self._chart_path(year, granularity)
         if not optional:
             data = await self._safe_get(path)
-            required: list[dict[str, Any]] = data.get("consommations", [])
-            return required
+        elif await self._granularities.lacks(granularity):
+            return []
+        else:
+            data = await self._optional_get(path, f"{granularity} chart") or {}
+        entries: list[dict[str, Any]] = data.get("consommations", [])
+        return entries
+
+    async def _optional_get(self, path: str, label: str) -> dict[str, Any] | None:
+        """Authenticated GET for data the contract may not have; ``None`` if unavailable.
+
+        Any API error other than a session expiry is the normal case for
+        such data, so it is logged at DEBUG, status only (the URL carries
+        the contract number). Session expiries are re-raised so
+        :meth:`.SessionGuard.run` can re-authenticate and retry.
+        """
         try:
-            data = await self._auth.get(path)
+            return await self._auth.get(path)
         except EauxDeMarseilleSessionExpiredError:
             raise
         except EauxDeMarseilleApiError as err:
-            _LOGGER.debug("Optional %s series unavailable: %s", granularity, err)
-            return []
-        entries: list[dict[str, Any]] = data.get("consommations", [])
-        return entries
+            _LOGGER.debug("Optional %s unavailable (HTTP status %s)", label, err.status)
+            return None
+
+    async def _fetch_granularities(self) -> Granularities | None:
+        """The series this contract exposes, ``None`` when the portal does not say."""
+        path = f"/Consommation/getDatesMinMaxConsommations/{self._contract_id}"
+        data = await self._optional_get(path, "granularities")
+        return None if data is None else parse_granularities(data)
 
     async def _safe_get(self, path: str) -> dict[str, Any]:
         """Authenticated GET that tolerates the portal's 'no data yet' soft 400.
@@ -325,8 +339,8 @@ class EauxDeMarseilleClient:
         """Build the consumption-chart endpoint path for ``year``.
 
         ``granularity`` is one of the portal's codes (``MOIS``,
-        ``JOURNEE``, ``SEMAINE``, ``TRIMESTRE``); availability per
-        contract is reported by ``/Acces/autorisations``.
+        ``JOURNEE``, ``SEMAINE``, ``TRIMESTRE``); which ones a contract
+        has is known by :class:`._granularities.GranularityCache`.
         """
         start = int(datetime(year, 1, 1, tzinfo=PORTAL_TZ).timestamp())
         end = int(datetime(year, 12, 31, 23, 59, 59, tzinfo=PORTAL_TZ).timestamp())
