@@ -6,10 +6,13 @@ only contains the platform plumbing (entity class + setup hook).
 
 from __future__ import annotations
 
+from datetime import date
+
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import EauxDeMarseilleConfigEntry
@@ -84,5 +87,5 @@ class EauxDeMarseilleSensor(CoordinatorEntity[EauxDeMarseilleCoordinator], Senso
         self._attr_device_info = device_info
 
     @property
-    def native_value(self) -> float | int | str | None:
+    def native_value(self) -> StateType | date:
         return self.entity_description.value_fn(self.coordinator.data)

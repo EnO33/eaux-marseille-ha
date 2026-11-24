@@ -47,7 +47,7 @@ L'intégration récupère votre consommation d'eau depuis le portail choisi tout
 | `sensor.eaux_de_marseille_<contrat>_dernier_releve` | Dernière consommation facturée | m³ |
 | `sensor.eaux_de_marseille_<contrat>_dernier_releve_litres` | Dernière consommation facturée | L |
 | `sensor.eaux_de_marseille_<contrat>_date_du_dernier_releve` | Date du dernier relevé facturé | — |
-| `sensor.eaux_de_marseille_<contrat>_duree_de_la_periode` | Nombre de jours dans la dernière période | jours |
+| `sensor.eaux_de_marseille_<contrat>_duree_de_la_periode` | Nombre de jours dans la dernière période | j |
 | `sensor.eaux_de_marseille_<contrat>_releve_precedent` | Avant-dernière consommation facturée | m³ |
 | `sensor.eaux_de_marseille_<contrat>_date_du_releve_precedent` | Date du relevé précédent | — |
 | `sensor.eaux_de_marseille_<contrat>_nombre_de_releves` | Nombre total de relevés disponibles | — |

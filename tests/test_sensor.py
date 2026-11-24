@@ -8,6 +8,8 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+from homeassistant.components.sensor import SensorDeviceClass
+from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
@@ -144,3 +146,18 @@ async def test_sensor_values(
     state = hass.states.get(readings_entity.entity_id)
     assert state is not None
     assert int(float(state.state)) == 10
+
+    # Reading dates are DATE sensors: the state stays ``YYYY-MM-DD`` (#129).
+    date_entity = next(e for e in entries if e.unique_id == f"{MOCK_CONTRACT_ID}_last_reading_date")
+    state = hass.states.get(date_entity.entity_id)
+    assert state is not None
+    assert state.state == "2026-03-05"
+    assert state.attributes["device_class"] == SensorDeviceClass.DATE
+
+    # The reading period is a DURATION in days.
+    days_entity = next(e for e in entries if e.unique_id == f"{MOCK_CONTRACT_ID}_last_reading_days")
+    state = hass.states.get(days_entity.entity_id)
+    assert state is not None
+    assert int(float(state.state)) == 94
+    assert state.attributes["device_class"] == SensorDeviceClass.DURATION
+    assert state.attributes["unit_of_measurement"] == UnitOfTime.DAYS
