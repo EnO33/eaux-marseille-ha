@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import json
 import urllib.parse
+from datetime import date
+
+import pytest
 
 from custom_components.eaux_marseille.models import ConsumptionData, encode_context_cookie
 
@@ -32,7 +35,7 @@ def test_last_reading_backfilled_from_history_when_dashboard_incomplete() -> Non
 
     data = ConsumptionData.from_api_responses(last_billed, {}, history)
 
-    assert data.last_reading_date == "2026-06-17"
+    assert data.last_reading_date == date(2026, 6, 17)
     assert data.last_reading_m3 == 26.0
     assert data.last_reading_litres == 26000
     assert data.index_m3 == 220.0
@@ -41,7 +44,7 @@ def test_last_reading_backfilled_from_history_when_dashboard_incomplete() -> Non
     assert data.index_precise_m3 == 220.0
     # The previous reading still comes from resultats[1].
     assert data.previous_reading_m3 == 48.0
-    assert data.previous_reading_date == "2026-05-18"
+    assert data.previous_reading_date == date(2026, 5, 18)
 
 
 def test_dashboard_values_take_precedence_over_history() -> None:
@@ -102,6 +105,17 @@ def test_reported_zeros_are_kept() -> None:
 
     assert data.current_year_m3 == 0.0
     assert data.daily_average_m3 == 0.0
+
+
+@pytest.mark.parametrize(
+    "date_releve",
+    [None, "", "not-a-date", "2026-13-45T00:00:00+01:00", 20260305],
+    ids=["null", "empty", "garbage", "impossible", "number"],
+)
+def test_malformed_reading_date_is_unknown(date_releve: object) -> None:
+    """A date the portal mangles leaves the sensor unknown instead of failing the poll."""
+    data = ConsumptionData.from_api_responses({"dateReleve": date_releve}, {}, {})
+    assert data.last_reading_date is None
 
 
 class TestEncodeContextCookie:

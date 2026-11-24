@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import urllib.parse
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 
@@ -28,11 +29,11 @@ class ConsumptionData:
     index_precise_m3: float | None
     last_reading_m3: float | None
     last_reading_litres: int | None
-    last_reading_date: str | None
+    last_reading_date: date | None
     last_reading_days: int | None
     daily_average_m3: float | None
     previous_reading_m3: float | None
-    previous_reading_date: str | None
+    previous_reading_date: date | None
     current_month_m3: float | None
     current_month_litres: int | None
     current_year_m3: float | None
@@ -110,11 +111,11 @@ class ConsumptionData:
             index_precise_m3=index_precise,
             last_reading_m3=last_reading.get("volumeConsoEnM3"),
             last_reading_litres=last_reading.get("volumeConsoEnLitres"),
-            last_reading_date=_iso_date_prefix(last_reading.get("dateReleve")),
+            last_reading_date=_iso_date(last_reading.get("dateReleve")),
             last_reading_days=last_reading.get("nbJours"),
             daily_average_m3=None if daily_average is None else round(daily_average, 4),
             previous_reading_m3=previous.get("volumeConsoEnM3"),
-            previous_reading_date=_iso_date_prefix(previous.get("dateReleve")),
+            previous_reading_date=_iso_date(previous.get("dateReleve")),
             current_month_m3=current_month.get("volumeConsoEnM3"),
             current_month_litres=current_month.get("volumeConsoEnLitres"),
             current_year_m3=year_total,
@@ -122,9 +123,18 @@ class ConsumptionData:
         )
 
 
-def _iso_date_prefix(value: str | None) -> str | None:
-    """Return the ``YYYY-MM-DD`` prefix of an ISO datetime, or ``None``."""
-    return value[:10] if value else None
+def _iso_date(value: Any) -> date | None:
+    """The calendar date of an ISO datetime as the portal wrote it, ``None`` if malformed.
+
+    Only the ``YYYY-MM-DD`` prefix is read: the reading date is the
+    portal's local day, whatever offset the timestamp carries.
+    """
+    if not isinstance(value, str):
+        return None
+    try:
+        return date.fromisoformat(value[:10])
+    except ValueError:
+        return None
 
 
 def _latest_by_date(entries: list[dict[str, Any]]) -> dict[str, Any]:

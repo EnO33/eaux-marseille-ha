@@ -9,13 +9,15 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import date
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import EntityCategory, UnitOfVolume
+from homeassistant.const import EntityCategory, UnitOfTime, UnitOfVolume
+from homeassistant.helpers.typing import StateType
 
 from .models import ConsumptionData
 
@@ -24,7 +26,7 @@ from .models import ConsumptionData
 class EauxDeMarseilleEntityDescription(SensorEntityDescription):
     """Describes an Eaux de Marseille sensor."""
 
-    value_fn: Callable[[ConsumptionData], float | int | str | None]
+    value_fn: Callable[[ConsumptionData], StateType | date]
 
 
 def _water_total(
@@ -102,12 +104,14 @@ SENSOR_DESCRIPTIONS: tuple[EauxDeMarseilleEntityDescription, ...] = (
     EauxDeMarseilleEntityDescription(
         key="last_reading_date",
         translation_key="last_reading_date",
+        device_class=SensorDeviceClass.DATE,
         value_fn=lambda d: d.last_reading_date,
     ),
     EauxDeMarseilleEntityDescription(
         key="last_reading_days",
         translation_key="last_reading_days",
-        native_unit_of_measurement="days",
+        native_unit_of_measurement=UnitOfTime.DAYS,
+        device_class=SensorDeviceClass.DURATION,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: d.last_reading_days,
@@ -118,6 +122,7 @@ SENSOR_DESCRIPTIONS: tuple[EauxDeMarseilleEntityDescription, ...] = (
     EauxDeMarseilleEntityDescription(
         key="previous_reading_date",
         translation_key="previous_reading_date",
+        device_class=SensorDeviceClass.DATE,
         value_fn=lambda d: d.previous_reading_date,
     ),
     # total_readings is meta-data about the data flow, not consumption itself.

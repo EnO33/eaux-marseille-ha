@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 import sys
-from datetime import UTC, datetime, tzinfo
+from datetime import UTC, date, datetime, tzinfo
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -69,6 +69,7 @@ except (ImportError, ModuleNotFoundError):
         "homeassistant.helpers.device_registry",
         "homeassistant.helpers.entity_platform",
         "homeassistant.helpers.event",
+        "homeassistant.helpers.typing",
         "homeassistant.helpers.update_coordinator",
         "homeassistant.data_entry_flow",
         "homeassistant.util",
@@ -103,11 +104,11 @@ MOCK_CONSUMPTION = ConsumptionData(
     index_precise_m3=193.842,
     last_reading_m3=18.0,
     last_reading_litres=18000,
-    last_reading_date="2026-03-05",
+    last_reading_date=date(2026, 3, 5),
     last_reading_days=94,
     daily_average_m3=0.1915,
     previous_reading_m3=18.0,
-    previous_reading_date="2025-12-01",
+    previous_reading_date=date(2025, 12, 1),
     current_month_m3=5.481,
     current_month_litres=5481,
     current_year_m3=18.443,

@@ -47,7 +47,7 @@ It pulls your water consumption from the chosen portal every hour and exposes it
 | `sensor.eaux_de_marseille_<contract>_dernier_releve` | Last billed consumption | m³ |
 | `sensor.eaux_de_marseille_<contract>_dernier_releve_litres` | Last billed consumption | L |
 | `sensor.eaux_de_marseille_<contract>_date_du_dernier_releve` | Last billed reading date | — |
-| `sensor.eaux_de_marseille_<contract>_duree_de_la_periode` | Days in last billed period | days |
+| `sensor.eaux_de_marseille_<contract>_duree_de_la_periode` | Days in last billed period | d |
 | `sensor.eaux_de_marseille_<contract>_releve_precedent` | Previous billed consumption | m³ |
 | `sensor.eaux_de_marseille_<contract>_date_du_releve_precedent` | Previous reading date | — |
 | `sensor.eaux_de_marseille_<contract>_nombre_de_releves` | Total available readings | — |
