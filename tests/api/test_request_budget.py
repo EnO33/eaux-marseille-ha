@@ -9,7 +9,17 @@ from aioresponses import CallbackResult, aioresponses
 from custom_components.eaux_marseille.api import EauxDeMarseilleClient
 from custom_components.eaux_marseille.const import portal_now
 
-from .portal import CHART_RE, DAILY_RE, HISTORY_URL, LAST_BILLED_URL, MONTHLY_RE, count_requests
+from .portal import (
+    CHART_RE,
+    DAILY_RE,
+    HISTORY_RE,
+    HISTORY_URL,
+    LAST_BILLED_RE,
+    LAST_BILLED_URL,
+    MONTHLY_RE,
+    count_requests,
+    register_poll,
+)
 
 _ENTRY = {"dateReleve": "2024-01-31T00:00:00+01:00", "volumeConsoEnM3": 3.0}
 
@@ -78,3 +88,33 @@ async def test_empty_closed_year_is_not_cached(
 
     assert await client.fetch_monthly_range(closed) == []
     assert await client.fetch_monthly_range(closed) == [_ENTRY]
+
+
+async def test_steady_poll_skips_the_billing_endpoints(
+    client: EauxDeMarseilleClient, mock_auth: aioresponses
+) -> None:
+    """Billed data moves once a billing cycle: polls in between ask the charts only (#127)."""
+    register_poll(mock_auth)
+
+    for _ in range(3):
+        data = await client.fetch()
+
+    assert data.index_m3 == 212.0
+    assert count_requests(mock_auth, LAST_BILLED_RE) == 1
+    assert count_requests(mock_auth, HISTORY_RE) == 1
+    assert count_requests(mock_auth, MONTHLY_RE) == 3
+    assert count_requests(mock_auth, DAILY_RE) == 3
+
+
+async def test_failed_billing_refresh_keeps_the_last_values(
+    expiring_client: EauxDeMarseilleClient, mock_auth: aioresponses
+) -> None:
+    """A billing outage does not fail the poll once billed data is known."""
+    mock_auth.get(LAST_BILLED_URL, payload={"valeurIndex": 42.0})
+    mock_auth.get(LAST_BILLED_URL, status=404)
+    register_poll(mock_auth)
+
+    await expiring_client.fetch()
+    data = await expiring_client.fetch()
+
+    assert data.index_m3 == 42.0

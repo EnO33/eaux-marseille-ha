@@ -14,18 +14,23 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any
 
 import aiohttp
 
 from ._auth import PortalAuth
-from ._granularities import DAILY, Granularities, GranularityCache, parse_granularities
+from ._granularities import DAILY, Granularities, lacks, parse_granularities
 from ._mobile import MobileClient
 from ._session import SessionGuard
+from ._ttl_cache import TtlCache
 from ._year_cache import ClosedYearCache
 from .const import (
+    BILLED_TTL_S,
     DEFAULT_PROVIDER,
+    GRANULARITIES_TTL_S,
     MOBILE_ENDPOINTS,
     PORTAL_TZ,
     PROVIDERS,
@@ -135,7 +140,10 @@ class EauxDeMarseilleClient:
             else None
         )
         self._closed_years = ClosedYearCache()
-        self._granularities = GranularityCache(self._fetch_granularities)
+        self._granularities = TtlCache(self._fetch_granularities, GRANULARITIES_TTL_S)
+        # The billed reading and history only move once a billing cycle: they
+        # are refreshed twice a day, and a failed refresh keeps the last ones.
+        self._billed = TtlCache(self._fetch_billed, BILLED_TTL_S, stale_on_error=True)
 
     async def close(self) -> None:
         """Close the underlying session if we own it."""
@@ -183,12 +191,13 @@ class EauxDeMarseilleClient:
             raise
 
     async def fetch(self) -> ConsumptionData:
-        """Fetch the three consumption endpoints and aggregate the result.
+        """Fetch the consumption endpoints and aggregate the result.
 
         Reuses the cached AEL session token across calls and
         transparently re-authenticates once if the portal returns 401/403
-        (token expired). Net effect: 4 concurrent requests/poll in the
-        steady state instead of 5 auth + 4 fetch.
+        (token expired). Net effect in the steady state: the monthly and
+        daily charts, concurrently, plus the two billing endpoints twice a
+        day (#127).
         """
         return await self._guard.run(self._fetch_inner)
 
@@ -218,22 +227,25 @@ class EauxDeMarseilleClient:
 
     async def _fetch_inner(self) -> ConsumptionData:
         year = portal_now().year
-        # The four requests are independent: run them concurrently. A
-        # TaskGroup cancels the others as soon as one fails, so a session
-        # expiry is retried by SessionGuard without stray requests in flight.
-        try:
-            async with asyncio.TaskGroup() as group:
-                last = group.create_task(self._safe_get(self._last_billed_path))
-                monthly = group.create_task(self._safe_get(self._chart_path(year, "MOIS")))
-                history = group.create_task(
-                    self._safe_get(f"/Facturation/listeConsommationsFacturees/{self._contract_id}")
-                )
-                daily = group.create_task(self._recent_daily(year))
-        except BaseExceptionGroup as errors:
-            raise _first_error(errors) from None
+        # The billed data comes from the cache except twice a day (#127): a
+        # steady-state poll sends the two chart requests only.
+        async with _all_or_first_error() as group:
+            billed = group.create_task(self._billed.get())
+            monthly = group.create_task(self._safe_get(self._chart_path(year, "MOIS")))
+            daily = group.create_task(self._recent_daily(year))
+        last, history = billed.result()
         return ConsumptionData.from_api_responses(
-            last.result(), monthly.result(), history.result(), daily_entries=daily.result()
+            last, monthly.result(), history, daily_entries=daily.result()
         )
+
+    async def _fetch_billed(self) -> tuple[dict[str, Any], dict[str, Any]]:
+        """The billed reading and the billed history, fetched together."""
+        async with _all_or_first_error() as group:
+            last = group.create_task(self._safe_get(self._last_billed_path))
+            history = group.create_task(
+                self._safe_get(f"/Facturation/listeConsommationsFacturees/{self._contract_id}")
+            )
+        return last.result(), history.result()
 
     async def _recent_daily(self, year: int) -> list[dict[str, Any]]:
         """Daily entries for the poll: web JOURNEE, else the mobility API."""
@@ -280,7 +292,7 @@ class EauxDeMarseilleClient:
         path = self._chart_path(year, granularity)
         if not optional:
             data = await self._safe_get(path)
-        elif await self._granularities.lacks(granularity):
+        elif lacks(await self._granularities.get(), granularity):
             return []
         else:
             data = await self._optional_get(path, f"{granularity} chart") or {}
@@ -340,7 +352,7 @@ class EauxDeMarseilleClient:
 
         ``granularity`` is one of the portal's codes (``MOIS``,
         ``JOURNEE``, ``SEMAINE``, ``TRIMESTRE``); which ones a contract
-        has is known by :class:`._granularities.GranularityCache`.
+        has is learnt by :meth:`_fetch_granularities`.
         """
         start = int(datetime(year, 1, 1, tzinfo=PORTAL_TZ).timestamp())
         end = int(datetime(year, 12, 31, 23, 59, 59, tzinfo=PORTAL_TZ).timestamp())
@@ -348,6 +360,20 @@ class EauxDeMarseilleClient:
             f"/Consommation/listeConsommationsInstanceAlerteChart/"
             f"{self._contract_id}/{start}/{end}/{granularity}/true"
         )
+
+
+@asynccontextmanager
+async def _all_or_first_error() -> AsyncIterator[asyncio.TaskGroup]:
+    """Run independent requests concurrently; on failure, raise the first error alone.
+
+    A TaskGroup cancels the other requests as soon as one fails, so a session
+    expiry is retried by SessionGuard without stray requests in flight.
+    """
+    try:
+        async with asyncio.TaskGroup() as group:
+            yield group
+    except BaseExceptionGroup as errors:
+        raise _first_error(errors) from None
 
 
 def _first_error(errors: BaseExceptionGroup[BaseException]) -> BaseException:

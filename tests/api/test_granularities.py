@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 import pytest
@@ -15,27 +14,21 @@ from custom_components.eaux_marseille.const import portal_now
 from .portal import (
     CONTRACT_ID,
     DAILY_RE,
+    GRANULARITIES_RE,
     GRANULARITIES_URL,
-    HISTORY_URL,
-    LAST_BILLED_URL,
     LOGIN,
-    MONTHLY_RE,
     count_requests,
     granularities_payload,
     register_granularities,
+    register_poll,
 )
 
-_GRANULARITIES_RE = re.compile(re.escape(GRANULARITIES_URL))
 _MONTHLY_ONLY = pytest.mark.parametrize("granularities", [("MOIS", "TRIMESTRE")])
 
 
 @pytest.fixture(autouse=True)
 def _poll_endpoints(mock_auth: aioresponses) -> None:
-    """The poll's endpoints, answering for as many polls as a test runs."""
-    mock_auth.get(LAST_BILLED_URL, payload={"valeurIndex": 212.0}, repeat=True)
-    mock_auth.get(MONTHLY_RE, payload={"consommations": [{"valeurIndex": 212982}]}, repeat=True)
-    mock_auth.get(HISTORY_URL, payload={"nbTotalResultats": 0, "resultats": []}, repeat=True)
-    mock_auth.get(DAILY_RE, payload={"consommations": []}, repeat=True)
+    register_poll(mock_auth)
 
 
 class TestParse:
@@ -74,7 +67,7 @@ async def test_monthly_only_contract_never_asks_the_daily_chart(
 
     assert data.index_precise_m3 == 212.982
     assert count_requests(mock_auth, DAILY_RE) == 0
-    assert count_requests(mock_auth, _GRANULARITIES_RE) == 1
+    assert count_requests(mock_auth, GRANULARITIES_RE) == 1
 
 
 async def test_daily_contract_still_gets_its_series(
@@ -101,22 +94,21 @@ async def test_unknown_granularities_keep_probing_and_are_asked_once(
         await client.fetch()
 
     assert count_requests(mock_auth, DAILY_RE) == 2
-    assert count_requests(mock_auth, _GRANULARITIES_RE) == 1
+    assert count_requests(mock_auth, GRANULARITIES_RE) == 1
 
 
 @pytest.mark.parametrize("granularities", [None])
 async def test_granularities_are_refreshed_once_expired(
-    client: EauxDeMarseilleClient, mock_auth: aioresponses
+    expiring_client: EauxDeMarseilleClient, mock_auth: aioresponses
 ) -> None:
     """A meter swap can add the daily series: the answer does not live forever."""
     mock_auth.get(GRANULARITIES_URL, payload=granularities_payload("MOIS"))
     register_granularities(mock_auth, "MOIS", "JOURNEE")
 
-    await client.fetch()
-    client._granularities._expires = float("-inf")
-    await client.fetch()
+    await expiring_client.fetch()
+    await expiring_client.fetch()
 
-    assert count_requests(mock_auth, _GRANULARITIES_RE) == 2
+    assert count_requests(mock_auth, GRANULARITIES_RE) == 2
     assert count_requests(mock_auth, DAILY_RE) == 1
 
 

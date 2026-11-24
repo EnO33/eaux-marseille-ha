@@ -29,6 +29,9 @@ GRANULARITIES_URL = f"{API_BASE}/Consommation/getDatesMinMaxConsommations/{CONTR
 CHART_RE = re.compile(r".*listeConsommationsInstanceAlerteChart.*")
 MONTHLY_RE = re.compile(r".*listeConsommationsInstanceAlerteChart.*/MOIS/true")
 DAILY_RE = re.compile(r".*listeConsommationsInstanceAlerteChart.*/JOURNEE/true")
+LAST_BILLED_RE = re.compile(re.escape(LAST_BILLED_URL))
+HISTORY_RE = re.compile(re.escape(HISTORY_URL))
+GRANULARITIES_RE = re.compile(re.escape(GRANULARITIES_URL))
 
 USER_INFO = {
     "identifiant": LOGIN,
@@ -90,6 +93,14 @@ def register_granularities(m: aioresponses, *granularities: str) -> None:
 def count_requests(m: aioresponses, pattern: re.Pattern[str]) -> int:
     """Number of requests sent to a URL matching ``pattern``."""
     return sum(len(calls) for (_, url), calls in m.requests.items() if pattern.match(str(url)))
+
+
+def register_poll(m: aioresponses, *, billed_index: float = 212.0) -> None:
+    """The poll's endpoints, answering for as many polls as a test runs."""
+    m.get(LAST_BILLED_URL, payload={"valeurIndex": billed_index}, repeat=True)
+    m.get(HISTORY_URL, payload={"nbTotalResultats": 0, "resultats": []}, repeat=True)
+    m.get(MONTHLY_RE, payload={"consommations": [{"valeurIndex": 212982}]}, repeat=True)
+    m.get(DAILY_RE, payload={"consommations": []}, repeat=True)
 
 
 def register_token(m: aioresponses) -> None:
