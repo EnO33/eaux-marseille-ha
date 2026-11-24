@@ -25,12 +25,8 @@ import aiohttp
 from yarl import URL
 
 from . import _http
-from .const import (
-    PROVIDERS,
-    PortalEndpoints,
-    Provider,
-    headers_for,
-)
+from ._connect import load_landing_page
+from .const import PROVIDERS, PortalEndpoints, Provider, headers_for
 from .exceptions import EauxDeMarseilleApiError, EauxDeMarseilleAuthError
 from .models import encode_context_cookie
 
@@ -40,16 +36,6 @@ _LOGGER = logging.getLogger(__name__)
 def conversation_id() -> str:
     """One-shot ``ConversationId`` header value."""
     return f"JS-WEB-Netscape-{uuid.uuid4()}"
-
-
-def _is_dns_failure(err: BaseException) -> bool:
-    """Detect DNS resolution failures from the connector.
-
-    aiohttp normalises both ``AsyncResolver`` (aiodns/c-ares) and
-    ``ThreadedResolver`` (``socket.getaddrinfo``) failures into
-    :class:`aiohttp.ClientConnectorDNSError` (added in aiohttp 3.10).
-    """
-    return isinstance(err, aiohttp.ClientConnectorDNSError)
 
 
 class PortalAuth:
@@ -67,8 +53,6 @@ class PortalAuth:
         self._timeout = timeout
         self._endpoints: PortalEndpoints = PROVIDERS[provider]
         self._base_headers = headers_for(self._endpoints)
-        # User credentials live on the auth helper that actually uses them,
-        # rather than being duplicated on the higher-level client.
         self._login = login
         self._password = password
         # Two distinct tokens with very different lifetimes:
@@ -78,14 +62,8 @@ class PortalAuth:
         # * ``_ael_token`` is the long-lived AEL session token returned by
         #   the login POST itself; used for every authenticated request from
         #   step 4 onwards.
-        # Splitting them keeps the lifecycle obvious and unblocks a future
-        # token-caching pass across coordinator polls (#12).
         self._app_token: str | None = None
         self._ael_token: str | None = None
-
-    # ------------------------------------------------------------------
-    # State predicates
-    # ------------------------------------------------------------------
 
     @property
     def is_authenticated(self) -> bool:
@@ -104,83 +82,26 @@ class PortalAuth:
         self._app_token = None
         self._ael_token = None
 
-    # ------------------------------------------------------------------
-    # Public flow
-    # ------------------------------------------------------------------
-
     async def authenticate(self) -> None:
         """Run all 5 steps; ``self._ael_token`` holds the AEL session token."""
         _LOGGER.info("Authentication: step 1/5 (acquiring session cookie)")
-        await self._step_landing()
-
+        self.invalidate()
+        await load_landing_page(
+            self._session, self._endpoints, headers=self._base_headers, timeout=self._timeout
+        )
         _LOGGER.info("Authentication: step 2/5 (generating token)")
         temp_token = await self._step_generate_token()
-
         _LOGGER.info("Authentication: step 3/5 (logging in user)")
         ael_token, user_info = await self._step_login(temp_token)
-
         _LOGGER.info("Authentication: step 4/5 (fetching default contract)")
-        contract = await self._step_default_contract()
-
+        contract = await self._auth_call("GET", "/Abonnement/getContratParDefaut/")
         _LOGGER.info("Authentication: step 5/5 (setting context cookie)")
-        self._step_set_context(contract, user_info, ael_token)
-
+        self._set_cookie("AEL_CONTEXT", encode_context_cookie(contract, user_info, ael_token))
         _LOGGER.info("Authentication successful")
-
-    # ------------------------------------------------------------------
-    # Authenticated GET (used by the consumption client after step 5)
-    # ------------------------------------------------------------------
 
     async def get(self, path: str, *, retry: bool = True) -> dict[str, Any]:
         """Authenticated GET on a path under the active portal's API base."""
-        return await _http.request_with_retry(
-            self._session,
-            "GET",
-            f"{self._endpoints.api_base}{path}",
-            timeout=self._timeout,
-            headers=self._headers(),
-            allowed_host=self._endpoints.host,
-            retry=retry,
-        )
-
-    # ------------------------------------------------------------------
-    # Steps (private)
-    # ------------------------------------------------------------------
-
-    async def _step_landing(self) -> None:
-        self._app_token = None
-        self._ael_token = None
-        try:
-            # Same redirect policy as every other call: the landing page
-            # carries no secret, but nothing should leave the portal's origin.
-            async with _http.open_following_redirects(
-                self._session,
-                "GET",
-                f"{self._endpoints.url}/",
-                headers=self._base_headers,
-                timeout=self._timeout,
-                allowed_host=self._endpoints.host,
-            ) as response:
-                await response.read()
-                _LOGGER.debug(
-                    "Portal landing page: HTTP %d (final URL: %s)",
-                    response.status,
-                    response.url,
-                )
-                if response.status >= 400:
-                    raise EauxDeMarseilleApiError(
-                        f"Portal returned HTTP {response.status} on landing page "
-                        f"(final URL: {response.url})"
-                    )
-        except (aiohttp.ClientError, TimeoutError) as err:
-            if _is_dns_failure(err):
-                raise EauxDeMarseilleApiError(
-                    f"DNS resolution failed for {self._endpoints.host}. "
-                    "Check Home Assistant's DNS configuration "
-                    "(Settings -> System -> Network -> Network adapter); "
-                    f"underlying error: {err}"
-                ) from err
-            raise EauxDeMarseilleApiError(f"Failed to reach portal: {err}") from err
+        return await self._request("GET", path, retry=retry)
 
     async def _step_generate_token(self) -> str:
         cid = conversation_id()
@@ -200,10 +121,7 @@ class PortalAuth:
         token: str = data.get("token", "")
         return token
 
-    async def _step_login(
-        self,
-        temp_token: str,
-    ) -> tuple[str, dict[str, Any]]:
+    async def _step_login(self, temp_token: str) -> tuple[str, dict[str, Any]]:
         # The login POST itself must carry the short-lived app token in
         # the ``token`` header. Once it returns, the AEL session token
         # supersedes it and the app token is no longer useful.
@@ -227,24 +145,6 @@ class PortalAuth:
         self._set_cookie("aelToken", ael_token)
         return ael_token, user_info
 
-    async def _step_default_contract(self) -> dict[str, Any]:
-        return await self._auth_call("GET", "/Abonnement/getContratParDefaut/")
-
-    def _step_set_context(
-        self,
-        contract: dict[str, Any],
-        user_info: dict[str, Any],
-        ael_token: str,
-    ) -> None:
-        self._set_cookie(
-            "AEL_CONTEXT",
-            encode_context_cookie(contract, user_info, ael_token),
-        )
-
-    # ------------------------------------------------------------------
-    # Helpers (private)
-    # ------------------------------------------------------------------
-
     def _headers(self, extra: dict[str, str] | None = None) -> dict[str, str]:
         """Build the standard request headers, with the bearer token if set.
 
@@ -260,10 +160,30 @@ class PortalAuth:
             headers.update(extra)
         return headers
 
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        retry: bool,
+        extra_headers: dict[str, str] | None = None,
+        json: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """A request to the portal's API, with the session's headers and token."""
+        return await _http.request_with_retry(
+            self._session,
+            method,
+            f"{self._endpoints.api_base}{path}",
+            timeout=self._timeout,
+            headers=self._headers(extra_headers),
+            allowed_host=self._endpoints.host,
+            retry=retry,
+            json=json,
+        )
+
     def _set_cookie(self, name: str, value: str) -> None:
         self._session.cookie_jar.update_cookies(
-            {name: value},
-            response_url=URL(self._endpoints.url),
+            {name: value}, response_url=URL(self._endpoints.url)
         )
 
     async def _auth_call(
@@ -288,14 +208,11 @@ class PortalAuth:
         once: replaying it could trip the account lockout.
         """
         try:
-            data = await _http.request_with_retry(
-                self._session,
+            data = await self._request(
                 method,
-                f"{self._endpoints.api_base}{path}",
-                timeout=self._timeout,
-                headers=self._headers(extra_headers),
-                allowed_host=self._endpoints.host,
+                path,
                 retry=not checks_credentials,
+                extra_headers=extra_headers,
                 json=json_payload,
             )
         except EauxDeMarseilleApiError as err:

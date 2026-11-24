@@ -3,7 +3,8 @@
 Both the web portal client (:mod:`.api`) and the mobility client
 (:mod:`._mobile`) cache a session token, authenticate when none is held and
 re-authenticate once when the backend reports the session expired.
-:class:`SessionGuard` is that algorithm, shared.
+:class:`SessionGuard` is that algorithm, shared. :func:`all_or_first_error`
+runs concurrent requests so that an expiry among their failures reaches it.
 
 The client is used concurrently (coordinator poll and statistics import), so
 authentication runs under a lock. Each successful login bumps a generation
@@ -16,7 +17,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from typing import TypeVar
 
 from .exceptions import EauxDeMarseilleSessionExpiredError
@@ -73,3 +75,29 @@ class SessionGuard:
             _LOGGER.debug("%s session expiry detail: %s", self._name, err)
             await self.ensure(expired=generation)
             return await action()
+
+
+@asynccontextmanager
+async def all_or_first_error() -> AsyncIterator[asyncio.TaskGroup]:
+    """Run independent requests concurrently; on failure, raise the first error alone.
+
+    A TaskGroup cancels the other requests as soon as one fails, so a session
+    expiry is retried by :class:`SessionGuard` without stray requests in flight.
+    """
+    try:
+        async with asyncio.TaskGroup() as group:
+            yield group
+    except BaseExceptionGroup as errors:
+        raise _first_error(errors) from None
+
+
+def _first_error(errors: BaseExceptionGroup[BaseException]) -> BaseException:
+    """Pick the error to re-raise from a failed group, a session expiry first.
+
+    :class:`SessionGuard` only re-authenticates on an expiry, so it must win
+    over any concurrent failure it may have caused.
+    """
+    return next(
+        (err for err in errors.exceptions if isinstance(err, EauxDeMarseilleSessionExpiredError)),
+        errors.exceptions[0],
+    )

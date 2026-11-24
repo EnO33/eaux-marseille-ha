@@ -19,6 +19,7 @@ from __future__ import annotations
 from typing import Any
 
 DAILY = "JOURNEE"
+MONTHLY = "MOIS"
 
 Granularities = frozenset[str]
 

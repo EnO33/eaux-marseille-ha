@@ -29,7 +29,6 @@ async def test_coordinator_update_success(hass: HomeAssistant, mock_client: Magi
     await coordinator.async_refresh()
 
     assert coordinator.data == MOCK_CONSUMPTION
-    mock_client.authenticate.assert_called_once()
     mock_client.fetch.assert_called_once()
 
 
@@ -37,7 +36,7 @@ async def test_coordinator_auth_error_raises_reauth(
     hass: HomeAssistant, mock_client: MagicMock
 ) -> None:
     """Auth errors raise ConfigEntryAuthFailed with a translation key."""
-    mock_client.authenticate.side_effect = EauxDeMarseilleAuthError("expired")
+    mock_client.fetch.side_effect = EauxDeMarseilleAuthError("expired")
 
     coordinator = EauxDeMarseilleCoordinator(hass, mock_client)
     with pytest.raises(ConfigEntryAuthFailed) as excinfo:

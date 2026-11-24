@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator, Iterator
 import pytest
 from aioresponses import aioresponses
 
-from custom_components.eaux_marseille import api
+from custom_components.eaux_marseille import _portal_reads, api
 from custom_components.eaux_marseille.api import EauxDeMarseilleClient
 
 from .portal import CONTRACT_ID, LOGIN, register_auth_flow, register_granularities
@@ -34,7 +34,7 @@ def expected_lingering_timers():
 
 async def _web_client() -> AsyncIterator[EauxDeMarseilleClient]:
     c = EauxDeMarseilleClient(login=LOGIN, password="password", contract_id=CONTRACT_ID)
-    c._mobile = None
+    c._daily._mobile = None
     yield c
     await c.close()
 
@@ -55,7 +55,7 @@ async def client() -> AsyncIterator[EauxDeMarseilleClient]:
 async def expiring_client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[EauxDeMarseilleClient]:
     """Like ``client``, but nothing it caches between polls outlives the call (#126, #127)."""
     monkeypatch.setattr(api, "BILLED_TTL_S", 0)
-    monkeypatch.setattr(api, "GRANULARITIES_TTL_S", 0)
+    monkeypatch.setattr(_portal_reads, "GRANULARITIES_TTL_S", 0)
     async for c in _web_client():
         yield c
 

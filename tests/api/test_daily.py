@@ -85,7 +85,7 @@ def test_chart_path_bounds_year_in_portal_time(client: EauxDeMarseilleClient) ->
     """The chart window runs from 1 January to 31 December in Paris
     time (UTC+1 in winter), not in UTC."""
     end = int(datetime(2027, 12, 31, 22, 59, 59, tzinfo=UTC).timestamp())
-    path = client._chart_path(2027, "MOIS")
+    path = client._reader.chart_path(2027, "MOIS")
     assert path.endswith(f"/{_PARIS_2027_START}/{end}/MOIS/true")
 
 
