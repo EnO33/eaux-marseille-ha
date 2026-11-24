@@ -6,6 +6,7 @@ These tests require a full Home Assistant environment and only run in CI.
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
@@ -13,7 +14,10 @@ from homeassistant.components.recorder.models import StatisticMeanType
 from homeassistant.core import HomeAssistant
 
 from custom_components.eaux_marseille.const import DOMAIN
-from custom_components.eaux_marseille.statistics import async_import_historical_statistics
+from custom_components.eaux_marseille.statistics import (
+    _entry_to_stat,
+    async_import_historical_statistics,
+)
 
 from .conftest import MOCK_CONTRACT_ID, MOCK_MONTHLY_ENTRIES
 
@@ -294,3 +298,16 @@ async def test_import_skips_entries_without_date(
     stats = mock_add_external_stats.call_args.args[2]
     assert len(stats) == 1
     assert stats[0]["state"] == 4.5
+
+
+@pytest.mark.parametrize(
+    "date",
+    ["2026-09-19T00:00:00", "2026-09-19T00:00:00+02:00"],
+    ids=["naive", "aware"],
+)
+def test_entry_start_is_portal_midnight_whatever_the_host_zone(date: str) -> None:
+    """A date without offset is Paris time, not the host's (CI runs in UTC) (#130)."""
+    stat = _entry_to_stat({"dateReleve": date, "volumeConsoEnM3": 1.0}, 0.0)
+
+    assert stat is not None
+    assert stat["start"] == datetime(2026, 9, 18, 22, tzinfo=UTC)

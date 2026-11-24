@@ -127,6 +127,8 @@ class EauxDeMarseilleConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call
     """Handle the configuration flow for Eaux de Marseille."""
 
     VERSION = 1
+    # 1.2: daily statistic cleared once to drop points dated in the host zone (#130).
+    MINOR_VERSION = 2
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}

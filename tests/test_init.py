@@ -43,6 +43,8 @@ async def test_setup_entry(hass: HomeAssistant, mock_client: MagicMock, mock_con
     assert isinstance(mock_config_entry.runtime_data, EauxDeMarseilleData)
     assert mock_config_entry.runtime_data.client is not None
     assert mock_config_entry.runtime_data.coordinator is not None
+    # Home Assistant ran the 1.1 -> 1.2 migration before the setup (#130).
+    assert mock_config_entry.minor_version == 2
 
 
 async def test_unload_entry(hass: HomeAssistant, mock_client: MagicMock, mock_config_entry) -> None:
